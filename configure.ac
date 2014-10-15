@@ -34,7 +34,7 @@ AC_CONFIG_HEADERS([config.h:config.in])dnl Keep filename to 8.3 for MS-DOS.
 CYASSL_LIBRARY_VERSION=6:0:1
 #                      | | |
 #               +------+ | +---+
-#               |        |     |
+#               |        |     | 
 #              current:revision:age
 #               |        |     |
 #               |        |     +- increment if interfaces have been added
@@ -145,6 +145,22 @@ AC_ARG_ENABLE([dtls],
 if test "$ENABLED_DTLS" = "yes"
 then
   AM_CFLAGS="-DCYASSL_DTLS $AM_CFLAGS"
+fi
+
+# MPDTLS
+AC_ARG_ENABLE([mpdtls],
+    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls],
+    [ ENABLED_MPDTLS=$enableval ],
+    [ ENABLED_MPDTLS=no ]
+    )
+if test "$ENABLED_MPDTLS" = "yes"
+then
+  if test "$ENABLED_DTLS" = "no"
+  then
+  	ENABLED_DTLS=yes
+    AM_CFLAGS="-DCYASSL_DTLS $AM_CFLAGS"
+  fi
+  AM_CFLAGS="-DCYASSL_MPDTLS $AM_CFLAGS"
 fi
 
 
@@ -1874,6 +1890,7 @@ echo "   * MEMORY:                    $ENABLED_MEMORY"
 echo "   * I/O POOL:                  $ENABLED_IOPOOL"
 echo "   * ERROR_STRINGS:             $ENABLED_ERROR_STRINGS"
 echo "   * DTLS:                      $ENABLED_DTLS"
+echo "   * MultiPath DTLS:            $ENABLED_MPDTLS"
 echo "   * Old TLS Versions:          $ENABLED_OLD_TLS"
 echo "   * OCSP:                      $ENABLED_OCSP"
 echo "   * CRL:                       $ENABLED_CRL"
