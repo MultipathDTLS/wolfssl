@@ -637,6 +637,7 @@ enum Misc {
     NO_COMPRESSION  =  0,
     ZLIB_COMPRESSION = 221,     /* CyaSSL zlib compression */
     HELLO_EXT_SIG_ALGO = 13,    /* ID for the sig_algo hello extension */
+    HELLO_EXT_MP_DTLS = 42,     /* ID for the MPDTLS extension */
     SECRET_LEN      = 48,       /* pre RSA and all master */
     ENCRYPT_LEN     = 512,      /* allow 4096 bit static buffer */
     SIZEOF_SENDER   =  4,       /* clnt or srvr           */
@@ -697,6 +698,8 @@ enum Misc {
     HELLO_EXT_LEN         = 6,  /* length of the lazy hello extensions */
     HELLO_EXT_SIGALGO_SZ  = 2,  /* length of signature algo extension  */
     HELLO_EXT_SIGALGO_MAX = 32, /* number of items in the signature algo list */
+    HELLO_EXT_MP_DTLS_LEN = 1,  /* Length of the field to be carried in the extension */
+    HELLO_EXT_MP_DTLS_SZ  = 5,  /* total length of the MPDTLS hello extension */
 
     DTLS_HANDSHAKE_HEADER_SZ = 12, /* normal + seq(2) + offset(3) + length(3) */
     DTLS_RECORD_HEADER_SZ    = 13, /* normal + epoch(2) + seq_num(6) */
@@ -1766,6 +1769,7 @@ typedef struct Options {
     byte            tls;                /* using TLS ? */
     byte            tls1_1;             /* using TLSv1.1+ ? */
     byte            dtls;               /* using datagrams ? */
+    byte            mpdtls;             /* Using MPDTLS */
     byte            connReset;          /* has the peer reset */
     byte            isClosed;           /* if we consider conn closed */
     byte            closeNotify;        /* we've recieved a close notify */

@@ -8771,6 +8771,7 @@ static void PickHashSigAlgo(CYASSL* ssl,
         int                sendSz;
         int                idSz = ssl->options.resuming ? ID_LEN : 0;
         int                ret;
+        int                totalExtSz = 0; //take into account all the extensions
 
         if (ssl->suites == NULL) {
             CYASSL_MSG("Bad suites pointer in SendClientHello");
@@ -8798,21 +8799,28 @@ static void PickHashSigAlgo(CYASSL* ssl,
                + COMP_LEN + ENUM_LEN;
 
 #ifdef HAVE_TLS_EXTENSIONS
-        length += TLSX_GetRequestSize(ssl);
+        totalExtSz += TLSX_GetRequestSize(ssl);
 #else
         if (IsAtLeastTLSv1_2(ssl) && ssl->suites->hashSigAlgoSz) {
-            length += ssl->suites->hashSigAlgoSz + HELLO_EXT_SZ;
+            totalExtSz += ssl->suites->hashSigAlgoSz + HELLO_EXT_SZ;
         }
 #endif
-        sendSz = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
+
 
 #ifdef CYASSL_DTLS
         if (ssl->options.dtls) {
             length += ENUM_LEN;   /* cookie */
             if (ssl->arrays->cookieSz != 0) length += ssl->arrays->cookieSz;
+#ifdef CYASSL_MPDTLS
+            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
+#endif
+            length += totalExtSz;
             sendSz  = length + DTLS_HANDSHAKE_HEADER_SZ + DTLS_RECORD_HEADER_SZ;
-            idx    += DTLS_HANDSHAKE_EXTRA + DTLS_RECORD_EXTRA;
+            idx    += DTLS_HANDSHAKE_EXTRA + DTLS_RECORD_EXTRA;            
         }
+#else
+        length += totalExtSz;
+        sendSz = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
 #endif
 
         if (ssl->keys.encryptionOn)
@@ -8881,6 +8889,8 @@ static void PickHashSigAlgo(CYASSL* ssl,
         else
             output[idx++] = NO_COMPRESSION;
 
+
+
 #ifdef HAVE_TLS_EXTENSIONS
         idx += TLSX_WriteRequest(ssl, output + idx);
 
@@ -8890,7 +8900,7 @@ static void PickHashSigAlgo(CYASSL* ssl,
         {
             int i;
             /* add in the extensions length */
-            c16toa(HELLO_EXT_LEN + ssl->suites->hashSigAlgoSz, output + idx);
+            c16toa(totalExtSz, output + idx);
             idx += 2;
 
             c16toa(HELLO_EXT_SIG_ALGO, output + idx);
@@ -8903,6 +8913,16 @@ static void PickHashSigAlgo(CYASSL* ssl,
                 output[idx] = ssl->suites->hashSigAlgo[i];
             }
         }
+#endif
+
+#ifdef CYASSL_MPDTLS
+        /*Set the extension MPDTLS flag to 1, just in case the server is compataible */
+        c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
+        idx += 2;
+        c16toa(HELLO_EXT_MP_DTLS_LEN, output + idx); //we put the size of the data
+        idx += 2;
+        output[idx] = 0x01; //the flag is on since we support mpdtls
+        idx += 1;
 #endif
 
         if (ssl->keys.encryptionOn) {
@@ -12037,8 +12057,13 @@ int DoSessionTicket(CYASSL* ssl,
                         XMEMCPY(clSuites.hashSigAlgo, &input[i],
                             min(clSuites.hashSigAlgoSz, HELLO_EXT_SIGALGO_MAX));
                         i += clSuites.hashSigAlgoSz;
-                    }
-                    else
+#ifdef CYASSL_MPDTLS
+                    }else if (extId == HELLO_EXT_MP_DTLS) {
+                        /* Read the extension content, set the MPDTLS byte in consequence */
+                        ssl->options.mpdtls = input[i];
+                        i += extSz;
+#endif
+                    }else
                         i += extSz;
 
                     totalExtSz -= OPAQUE16_LEN + OPAQUE16_LEN + extSz;
