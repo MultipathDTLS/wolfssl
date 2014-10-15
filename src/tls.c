@@ -2064,8 +2064,6 @@ word16 TLSX_WriteRequest(CYASSL* ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
-        offset += OPAQUE16_LEN; /* extensions length */
-
         EC_VALIDATE_REQUEST(ssl, semaphore);
 
         if (ssl->extensions)
@@ -2095,9 +2093,6 @@ word16 TLSX_WriteRequest(CYASSL* ssl, byte* output)
             for (i = 0; i < ssl->suites->hashSigAlgoSz; i++, offset++)
                 output[offset] = ssl->suites->hashSigAlgo[i];
         }
-
-        if (offset > OPAQUE16_LEN)
-            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;

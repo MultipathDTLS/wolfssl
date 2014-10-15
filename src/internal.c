@@ -8767,11 +8767,10 @@ static void PickHashSigAlgo(CYASSL* ssl,
     int SendClientHello(CYASSL* ssl)
     {
         byte              *output;
-        word32             length, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
-        int                sendSz;
+        word32             length, totalExtSz = 0, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
+        int                sendSz = 0;
         int                idSz = ssl->options.resuming ? ID_LEN : 0;
         int                ret;
-        int                totalExtSz = 0; //take into account all the extensions
 
         if (ssl->suites == NULL) {
             CYASSL_MSG("Bad suites pointer in SendClientHello");
@@ -8805,7 +8804,7 @@ static void PickHashSigAlgo(CYASSL* ssl,
             totalExtSz += ssl->suites->hashSigAlgoSz + HELLO_EXT_SZ;
         }
 #endif
-
+        sendSz  = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
 
 #ifdef CYASSL_DTLS
         if (ssl->options.dtls) {
@@ -8814,14 +8813,15 @@ static void PickHashSigAlgo(CYASSL* ssl,
 #ifdef CYASSL_MPDTLS
             totalExtSz += HELLO_EXT_MP_DTLS_SZ;
 #endif
-            length += totalExtSz;
-            sendSz  = length + DTLS_HANDSHAKE_HEADER_SZ + DTLS_RECORD_HEADER_SZ;
+            sendSz  = length + DTLS_HANDSHAKE_HEADER_SZ + DTLS_RECORD_HEADER_SZ + totalExtSz;
             idx    += DTLS_HANDSHAKE_EXTRA + DTLS_RECORD_EXTRA;            
         }
-#else
-        length += totalExtSz;
-        sendSz = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
 #endif
+
+        /* No more extensions to add */
+        length += totalExtSz;
+        /* Need to remove the first field (contains the total size of the extensions) */
+        totalExtSz -= OPAQUE16_LEN;
 
         if (ssl->keys.encryptionOn)
             sendSz += MAX_MSG_EXTRA;
@@ -8889,7 +8889,9 @@ static void PickHashSigAlgo(CYASSL* ssl,
         else
             output[idx++] = NO_COMPRESSION;
 
-
+        /* Write the total length of the extensions */
+        c16toa(totalExtSz, output + idx);
+        idx += 2;
 
 #ifdef HAVE_TLS_EXTENSIONS
         idx += TLSX_WriteRequest(ssl, output + idx);
@@ -8899,9 +8901,6 @@ static void PickHashSigAlgo(CYASSL* ssl,
         if (IsAtLeastTLSv1_2(ssl) && ssl->suites->hashSigAlgoSz)
         {
             int i;
-            /* add in the extensions length */
-            c16toa(totalExtSz, output + idx);
-            idx += 2;
 
             c16toa(HELLO_EXT_SIG_ALGO, output + idx);
             idx += 2;
