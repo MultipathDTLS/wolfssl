@@ -9143,31 +9143,63 @@ static void PickHashSigAlgo(CYASSL* ssl,
 
         /* tls extensions */
         if ( (i - begin) < helloSz) {
+            word16 totalExtSz;
+            if ((i - begin) + OPAQUE16_LEN > helloSz)
+                return BUFFER_ERROR;
+
+            ato16(&input[i], &totalExtSz);
+            i += OPAQUE16_LEN;
+
+            if ((i - begin) + totalExtSz > helloSz)
+                return BUFFER_ERROR;
 #ifdef HAVE_TLS_EXTENSIONS
             if (TLSX_SupportExtensions(ssl)) {
                 int    ret = 0;
-                word16 totalExtSz;
                 Suites clSuites; /* just for compatibility right now */
-
-                if ((i - begin) + OPAQUE16_LEN > helloSz)
-                    return BUFFER_ERROR;
-
-                ato16(&input[i], &totalExtSz);
-                i += OPAQUE16_LEN;
-
-                if ((i - begin) + totalExtSz > helloSz)
-                    return BUFFER_ERROR;
 
                 if ((ret = TLSX_Parse(ssl, (byte *) input + i,
                                                      totalExtSz, 0, &clSuites)))
                     return ret;
 
+
+            }
+#endif
+            /** We check for other extensions */
+            word16 offset = 0;
+
+            while (offset < totalExtSz) {
+                word16 type;
+                word16 size;
+
+                if (totalExtSz - offset < HELLO_EXT_TYPE_SZ + OPAQUE16_LEN)
+                    return BUFFER_ERROR;
+                ato16(input + i + offset, &type);
+                offset += HELLO_EXT_TYPE_SZ;
+
+                ato16(input + i + offset, &size);
+                offset += OPAQUE16_LEN;
+
+                if (offset + size > totalExtSz)
+                    return BUFFER_ERROR;
+
+                switch (type) {
+#ifdef CYASSL_MPDTLS
+                    case HELLO_EXT_MP_DTLS:
+                        CYASSL_MSG("Extension MPDTLS received");
+                        ssl->options.mpdtls = input[i+offset];
+                        break;
+#endif
+                    default:
+                        /* Ignore unknown extensions */
+                        break;
+                }
+
+                /* offset should be updated here! */
+                offset += size;
+            }
+
                 i += totalExtSz;
                 *inOutIdx = i;
-            }
-            else
-#endif
-                *inOutIdx = begin + helloSz; /* skip extensions */
         }
 
         ssl->options.serverState = SERVER_HELLO_COMPLETE;
@@ -12059,6 +12091,7 @@ int DoSessionTicket(CYASSL* ssl,
 #ifdef CYASSL_MPDTLS
                     }else if (extId == HELLO_EXT_MP_DTLS) {
                         /* Read the extension content, set the MPDTLS byte in consequence */
+                        CYASSL_MSG("Extension MPDTLS detected \n");
                         ssl->options.mpdtls = input[i];
                         i += extSz;
 #endif
