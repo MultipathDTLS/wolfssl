@@ -310,6 +310,7 @@ CYASSL_API int  CyaSSL_dtls_set_timeout_init(CYASSL* ssl, int);
 CYASSL_API int  CyaSSL_dtls_set_timeout_max(CYASSL* ssl, int);
 CYASSL_API int  CyaSSL_dtls_got_timeout(CYASSL* ssl);
 CYASSL_API int  CyaSSL_dtls(CYASSL* ssl);
+CYASSL_API int  CyaSSL_mpdtls(CYASSL* ssl);
 
 CYASSL_API int  CyaSSL_dtls_set_peer(CYASSL*, void*, unsigned int);
 CYASSL_API int  CyaSSL_dtls_get_peer(CYASSL*, void*, unsigned int*);

@@ -280,6 +280,12 @@ int CyaSSL_dtls(CYASSL* ssl)
 }
 
 
+int CyaSSL_mpdtls(CYASSL* ssl)
+{
+    return ssl->options.mpdtls;
+}
+
+
 #ifndef CYASSL_LEANPSK
 void CyaSSL_set_using_nonblock(CYASSL* ssl, int nonblock)
 {
