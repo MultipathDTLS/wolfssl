@@ -4863,6 +4863,9 @@ int CyaSSL_dtls_got_timeout(CYASSL* ssl)
         #ifdef CYASSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
+        #ifdef CYASSL_MPDTLS
+                ssl->options.mpdtls = 1;
+        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 
@@ -5151,6 +5154,9 @@ int CyaSSL_dtls_got_timeout(CYASSL* ssl)
         #ifdef CYASSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
+        #ifdef CYASSL_MPDTLS
+                ssl->options.mpdtls = 0;
+        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 
