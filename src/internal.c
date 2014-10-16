@@ -10555,6 +10555,7 @@ int DoSessionTicket(CYASSL* ssl,
     {
         byte              *output;
         word32             length, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
+        word16             totalExtSz = 0;
         int                sendSz;
         int                ret;
 
@@ -10564,8 +10565,15 @@ int DoSessionTicket(CYASSL* ssl,
                + ENUM_LEN;
 
 #ifdef HAVE_TLS_EXTENSIONS
-        length += TLSX_GetResponseSize(ssl);
+        totalExtSz += TLSX_GetResponseSize(ssl);
 #endif
+
+#ifdef CYASSL_MPDTLS
+        if (ssl->options.dtls & ssl->options.mpdtls)
+            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
+#endif
+        if (totalExtSz > 0)
+            length += totalExtSz + OPAQUE16_LEN;
 
         /* check for avalaible size */
         if ((ret = CheckAvailableSize(ssl, MAX_HELLO_SZ)) != 0)
@@ -10632,10 +10640,25 @@ int DoSessionTicket(CYASSL* ssl,
             output[idx++] = NO_COMPRESSION;
 
             /* last, extensions */
+        if (totalExtSz > 0) {
+            c16toa(totalExtSz, output + idx); /* extensions length */
+            idx += OPAQUE16_LEN;
+
 #ifdef HAVE_TLS_EXTENSIONS
-        TLSX_WriteResponse(ssl, output + idx);
+            idx += TLSX_WriteResponse(ssl, output + idx);
 #endif
-            
+#ifdef CYASSL_MPDTLS
+            if (ssl->options.dtls & ssl->options.mpdtls) {
+                c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
+                idx += 2;
+                c16toa(HELLO_EXT_MP_DTLS_LEN, output + idx); //we put the size of the data
+                idx += 2;
+                output[idx] = 0x01; //the flag is on since we support mpdtls
+                idx += 1;
+            }
+#endif
+        }
+
         ssl->buffers.outputBuffer.length += sendSz;
         #ifdef CYASSL_DTLS
             if (ssl->options.dtls) {
@@ -12030,6 +12053,34 @@ int DoSessionTicket(CYASSL* ssl,
                                                      totalExtSz, 1, &clSuites)))
                     return ret;
 
+#ifdef CYASSL_MPDTLS
+                word16 tExtSz = totalExtSz;
+                word32 inc = i;
+
+                while (tExtSz) {
+                    word16 extId, extSz;
+
+                    if (OPAQUE16_LEN + OPAQUE16_LEN > tExtSz)
+                        return BUFFER_ERROR;
+                   
+                    ato16(&input[inc], &extId);
+                    inc += OPAQUE16_LEN;
+                    ato16(&input[inc], &extSz);
+                    inc += OPAQUE16_LEN;
+
+                    if (OPAQUE16_LEN + OPAQUE16_LEN + extSz > tExtSz)
+                        return BUFFER_ERROR;
+
+                    if (extId == HELLO_EXT_MP_DTLS) {
+                        /* Read the extension content, set the MPDTLS byte in consequence */
+                        ssl->options.mpdtls = input[inc];
+                    }
+
+                    inc += extSz;
+                    tExtSz -= OPAQUE16_LEN + OPAQUE16_LEN + extSz;
+                }
+#endif
+
                 i += totalExtSz;
 #else
                 while (totalExtSz) {
@@ -12057,12 +12108,14 @@ int DoSessionTicket(CYASSL* ssl,
                             min(clSuites.hashSigAlgoSz, HELLO_EXT_SIGALGO_MAX));
                         i += clSuites.hashSigAlgoSz;
 #ifdef CYASSL_MPDTLS
-                    }else if (extId == HELLO_EXT_MP_DTLS) {
+                    }
+                    else if (extId == HELLO_EXT_MP_DTLS) {
                         /* Read the extension content, set the MPDTLS byte in consequence */
                         ssl->options.mpdtls = input[i];
                         i += extSz;
 #endif
-                    }else
+                    }
+                    else
                         i += extSz;
 
                     totalExtSz -= OPAQUE16_LEN + OPAQUE16_LEN + extSz;
@@ -12358,6 +12411,8 @@ int DoSessionTicket(CYASSL* ssl,
         if ((ret = ssl->ctx->CBIOCookie(ssl, output + idx, cookieSz,
                                         ssl->IOCB_CookieCtx)) < 0)
             return ret;
+
+        /* set MP DTLS Option */
 
         ret = HashOutput(ssl, output, sendSz, 0);
         if (ret != 0)

@@ -2111,10 +2111,7 @@ word16 TLSX_GetResponseSize(CYASSL* ssl)
         length += TLSX_GetSize(ssl->extensions, semaphore, 0);
 
     /* All the response data is set at the ssl object only, so no ctx here. */
-
-    if (length)
-        length += OPAQUE16_LEN; /* for total length storage */
-
+    
     return length;
 }
 
@@ -2125,12 +2122,7 @@ word16 TLSX_WriteResponse(CYASSL *ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
-        offset += OPAQUE16_LEN; /* extensions length */
-
         offset += TLSX_Write(ssl->extensions, output + offset, semaphore, 0);
-
-        if (offset > OPAQUE16_LEN)
-            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;
