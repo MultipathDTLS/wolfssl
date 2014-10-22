@@ -1015,6 +1015,12 @@ typedef struct Suites {
 CYASSL_LOCAL
 void InitSuites(Suites*, ProtocolVersion,
                                      byte, byte, byte, byte, byte, byte, int);
+
+#ifdef CYASSL_MPDTLS
+void MpdtlsAddrsInit(MPDTLS_ADDRS* addr);
+void MpdtlsAddrsFree(MPDTLS_ADDRS* addr);
+#endif
+
 CYASSL_LOCAL
 int  SetCipherList(Suites*, const char* list);
 
@@ -2050,7 +2056,8 @@ struct CYASSL {
     void*           IOCB_CookieCtx;     /* gen cookie ctx */
     word32          dtls_expected_rx;
 #ifdef CYASSL_MPDTLS
-    MPDTLS_ADDRS*   mpdtls_addrs;       /* available addresses  */
+    MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
+    MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
 #endif
 #endif
 #ifdef CYASSL_CALLBACKS

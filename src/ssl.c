@@ -288,7 +288,7 @@ int CyaSSL_mpdtls(CYASSL* ssl)
 int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *addr)
 {
     struct in_addr inp;
-    MPDTLS_ADDRS *ma = ssl->mpdtls_addrs;
+    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
     if (inet_pton(AF_INET, addr, &inp) > 0) {
         ma->nbrAddrs++;
         ma->addrs = (in_addr_t*) XREALLOC(ma->addrs,

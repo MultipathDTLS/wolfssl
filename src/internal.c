@@ -1901,10 +1901,8 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
 #endif
 
 #ifdef CYASSL_MPDTLS
-    ssl->mpdtls_addrs = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
-                                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    ssl->mpdtls_addrs->nbrAddrs = 0;
-    ssl->mpdtls_addrs->addrs = NULL;
+    MpdtlsAddrsInit(ssl->mpdtls_remote);
+    MpdtlsAddrsInit(ssl->mpdtls_host);
 #endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1934,6 +1932,31 @@ void FreeArrays(CYASSL* ssl, int keep)
 }
 
 
+#ifdef CYASSL_MPDTLS
+
+/* Init struct MPDTLS addr */
+void MpdtlsAddrsInit(MPDTLS_ADDRS* addr){
+    addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
+                                    ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    addr->nbrAddrs = 0;
+    addr->addrs = NULL;
+}
+
+/* Free struct MPDTLS addr */
+
+/* Init struct MPDTLS addr */
+void MpdtlsAddrsFree(MPDTLS_ADDRS* addr){
+    XFREE(addr->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(addr, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+}
+
+
+#endif
+
+
+
+
+
 /* In case holding SSL object in array and don't want to free actual ssl */
 void SSL_ResourceFree(CYASSL* ssl)
 {
@@ -1944,8 +1967,8 @@ void SSL_ResourceFree(CYASSL* ssl)
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
 
 #ifdef CYASSL_MPDTLS
-    XFREE(ssl->mpdtls_addrs->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    XFREE(ssl->mpdtls_addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    MpdtlsAddrsFree(ssl->mpdtls_remote);
+    MpdtlsAddrsFree(ssl->mpdtls_host);
 #endif
 
 #ifndef NO_CERTS
@@ -10617,7 +10640,7 @@ int DoSessionTicket(CYASSL* ssl,
 #ifdef CYASSL_MPDTLS
         if (ssl->options.dtls & ssl->options.mpdtls)
             totalExtSz += HELLO_EXT_MP_DTLS_SZ + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                            + sizeof(in_addr_t)*ssl->mpdtls_addrs->nbrAddrs;
+                            + sizeof(in_addr_t)*ssl->mpdtls_host->nbrAddrs;
 #endif
         if (totalExtSz > 0)
             length += totalExtSz + OPAQUE16_LEN;
@@ -10699,18 +10722,18 @@ int DoSessionTicket(CYASSL* ssl,
                 c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
                 idx += 2;
                 word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                            + sizeof(in_addr_t)*ssl->mpdtls_addrs->nbrAddrs;
+                            + sizeof(in_addr_t)*ssl->mpdtls_host->nbrAddrs;
                 c16toa(mpdtls_ext_length, output + idx); //we put the size of the data
                 idx += 2;
                 output[idx] = 0x01; //the flag is on since we support mpdtls
                 idx += 1;
 
-                int nbrAddrs = ssl->mpdtls_addrs->nbrAddrs;
+                int nbrAddrs = ssl->mpdtls_host->nbrAddrs;
                 c16toa(nbrAddrs, output+idx); //we indicate the number of addrs we want to transmit
                 idx += HELLO_EXT_MP_DTLS_ADDR_LEN;
                 int i;
                 for(i=0; i<nbrAddrs; i++){
-                    XMEMCPY(output + idx, ssl->mpdtls_addrs->addrs + sizeof(in_addr_t)*i,
+                    XMEMCPY(output + idx, ssl->mpdtls_host->addrs + sizeof(in_addr_t)*i,
                             sizeof(in_addr_t));
                     idx+= sizeof(in_addr_t);
                 }
