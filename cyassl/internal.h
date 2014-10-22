@@ -1147,8 +1147,8 @@ typedef struct MPDTLS_ADDRS {
 } MPDTLS_ADDRS;
 
 
-void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS* addr);
-void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS* addr);
+void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr);
+void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr);
 #endif
 
 /* CyaSSL Certificate Manager */

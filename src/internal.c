@@ -1901,8 +1901,8 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
 #endif
 
 #ifdef CYASSL_MPDTLS
-    MpdtlsAddrsInit(ssl, ssl->mpdtls_remote);
-    MpdtlsAddrsInit(ssl, ssl->mpdtls_host);
+    MpdtlsAddrsInit(ssl, &(ssl->mpdtls_remote));
+    MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
 #endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1935,20 +1935,21 @@ void FreeArrays(CYASSL* ssl, int keep)
 #ifdef CYASSL_MPDTLS
 
 /* Init struct MPDTLS addr */
-void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS* addr) {
-    addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
+void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr) {
+    *addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    addr->nbrAddrs = 0;
-    addr->addrs = NULL;
+    (*addr)->nbrAddrs = 0;
+    (*addr)->addrs = NULL;
 }
 
 /* Free struct MPDTLS addr */
 
 /* Init struct MPDTLS addr */
-void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS* addr) {
+void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr) {
     (void)ssl; // workaround compiler --unused-parameter
-    XFREE(addr->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    XFREE(addr, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE((*addr)->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(*addr, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    *addr = NULL;
 }
 
 
@@ -1968,8 +1969,8 @@ void SSL_ResourceFree(CYASSL* ssl)
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
 
 #ifdef CYASSL_MPDTLS
-    MpdtlsAddrsFree(ssl, ssl->mpdtls_remote);
-    MpdtlsAddrsFree(ssl, ssl->mpdtls_host);
+    MpdtlsAddrsFree(ssl, &(ssl->mpdtls_remote));
+    MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
 #endif
 
 #ifndef NO_CERTS
