@@ -1943,6 +1943,11 @@ void SSL_ResourceFree(CYASSL* ssl)
     XFREE(ssl->suites, ssl->heap, DYNAMIC_TYPE_SUITES);
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
 
+#ifdef CYASSL_MPDTLS
+    XFREE(ssl->mpdtls_addrs->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(ssl->mpdtls_addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+#endif
+
 #ifndef NO_CERTS
     XFREE(ssl->buffers.serverDH_Priv.buffer, ssl->heap, DYNAMIC_TYPE_DH);
     XFREE(ssl->buffers.serverDH_Pub.buffer, ssl->heap, DYNAMIC_TYPE_DH);
