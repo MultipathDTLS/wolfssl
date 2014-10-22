@@ -699,6 +699,7 @@ enum Misc {
     HELLO_EXT_SIGALGO_SZ  = 2,  /* length of signature algo extension  */
     HELLO_EXT_SIGALGO_MAX = 32, /* number of items in the signature algo list */
     HELLO_EXT_MP_DTLS_LEN = 1,  /* Length of the field to be carried in the extension */
+    HELLO_EXT_MP_DTLS_ADDR_LEN = 2, /* Length of the field which encodes the number of address we carry */
     HELLO_EXT_MP_DTLS_SZ  = 5,  /* total length of the MPDTLS hello extension */
 
     DTLS_HANDSHAKE_HEADER_SZ = 12, /* normal + seq(2) + offset(3) + length(3) */
@@ -1134,6 +1135,14 @@ struct CYASSL_CRL {
 
 #ifndef CA_TABLE_SIZE
     #define CA_TABLE_SIZE 11
+#endif
+
+#ifdef CYASSL_MPDTLS
+/* MPDTLS address manager */
+typedef struct MPDTLS_ADDRS {
+    in_addr_t*      addrs;              /* Contains all the available addresses for MPDTLS */
+    int             nbrAddrs;           /* Number of available addresses */
+} MPDTLS_ADDRS;
 #endif
 
 /* CyaSSL Certificate Manager */
@@ -2040,6 +2049,9 @@ struct CYASSL {
     DtlsMsg*        dtls_msg_list;
     void*           IOCB_CookieCtx;     /* gen cookie ctx */
     word32          dtls_expected_rx;
+#ifdef CYASSL_MPDTLS
+    MPDTLS_ADDRS*   mpdtls_addrs;       /* available addresses  */
+#endif
 #endif
 #ifdef CYASSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */

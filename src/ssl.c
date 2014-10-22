@@ -279,11 +279,36 @@ int CyaSSL_dtls(CYASSL* ssl)
     return ssl->options.dtls;
 }
 
-
 int CyaSSL_mpdtls(CYASSL* ssl)
 {
     return ssl->options.mpdtls;
 }
+
+#ifdef CYASSL_MPDTLS
+int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *addr)
+{
+    struct in_addr inp;
+    MPDTLS_ADDRS *ma = ssl->mpdtls_addrs;
+    if (inet_pton(AF_INET, addr, &inp) > 0) {
+        ma->nbrAddrs++;
+        ma->addrs = (in_addr_t*) XREALLOC(ma->addrs,
+                                          sizeof(in_addr_t) * ma->nbrAddrs,
+                                          ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+
+        /* We add one new address at the end of the existing ones */
+
+        XMEMCPY(ma->addrs+sizeof(in_addr_t) * (ma->nbrAddrs - 1),
+                &inp, sizeof(in_addr_t));
+
+        return SSL_SUCCESS;
+    } else {
+        return PARSE_ADDR_E;
+    }
+}
+
+#endif
+
+
 
 
 #ifndef CYASSL_LEANPSK

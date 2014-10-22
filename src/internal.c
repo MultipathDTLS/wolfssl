@@ -463,6 +463,7 @@ int InitSSL_Ctx(CYASSL_CTX* ctx, CYASSL_METHOD* method)
         return BAD_CERT_MANAGER_ERROR;
     }
 #endif
+
     return 0;
 }
 
@@ -1681,6 +1682,7 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
     ssl->options.tls    = 0;
     ssl->options.tls1_1 = 0;
     ssl->options.dtls = ssl->version.major == DTLS_MAJOR;
+    ssl->options.mpdtls = 0; /* determined later by exchange between client -server */
     ssl->options.partialWrite  = ctx->partialWrite;
     ssl->options.quietShutdown = ctx->quietShutdown;
     ssl->options.certOnly = 0;
@@ -1897,6 +1899,13 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
     ecc_init(ssl->eccDsaKey);
     ecc_init(ssl->eccTempKey);
 #endif
+
+#ifdef CYASSL_MPDTLS
+    ssl->mpdtls_addrs = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
+                                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    ssl->mpdtls_addrs->nbrAddrs = 0;
+    ssl->mpdtls_addrs->addrs = NULL;
+#endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
     if (ssl->options.side == CYASSL_SERVER_END) 
@@ -10602,7 +10611,8 @@ int DoSessionTicket(CYASSL* ssl,
 
 #ifdef CYASSL_MPDTLS
         if (ssl->options.dtls & ssl->options.mpdtls)
-            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
+            totalExtSz += HELLO_EXT_MP_DTLS_SZ + HELLO_EXT_MP_DTLS_ADDR_LEN 
+                            + sizeof(in_addr_t)*ssl->mpdtls_addrs->nbrAddrs;
 #endif
         if (totalExtSz > 0)
             length += totalExtSz + OPAQUE16_LEN;
@@ -10683,10 +10693,22 @@ int DoSessionTicket(CYASSL* ssl,
             if (ssl->options.dtls & ssl->options.mpdtls) {
                 c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
                 idx += 2;
-                c16toa(HELLO_EXT_MP_DTLS_LEN, output + idx); //we put the size of the data
+                word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN 
+                            + sizeof(in_addr_t)*ssl->mpdtls_addrs->nbrAddrs;
+                c16toa(mpdtls_ext_length, output + idx); //we put the size of the data
                 idx += 2;
                 output[idx] = 0x01; //the flag is on since we support mpdtls
                 idx += 1;
+
+                int nbrAddrs = ssl->mpdtls_addrs->nbrAddrs;
+                c16toa(nbrAddrs, output+idx); //we indicate the number of addrs we want to transmit
+                idx += HELLO_EXT_MP_DTLS_ADDR_LEN;
+                int i;
+                for(i=0; i<nbrAddrs; i++){
+                    XMEMCPY(output + idx, ssl->mpdtls_addrs->addrs + sizeof(in_addr_t)*i,
+                            sizeof(in_addr_t));
+                    idx+= sizeof(in_addr_t);
+                }
             }
 #endif
         }

@@ -30,6 +30,10 @@
 #include <cyassl/ctaocrypt/settings.h>
 #include <cyassl/version.h>
 
+#ifdef CYASSL_MPDTLS
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+#endif
 
 #ifndef NO_FILESYSTEM
     #ifdef FREESCALE_MQX
@@ -310,7 +314,10 @@ CYASSL_API int  CyaSSL_dtls_set_timeout_init(CYASSL* ssl, int);
 CYASSL_API int  CyaSSL_dtls_set_timeout_max(CYASSL* ssl, int);
 CYASSL_API int  CyaSSL_dtls_got_timeout(CYASSL* ssl);
 CYASSL_API int  CyaSSL_dtls(CYASSL* ssl);
+
+/*  MPDTLS functions    */
 CYASSL_API int  CyaSSL_mpdtls(CYASSL* ssl);
+CYASSL_API int  CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char*);
 
 CYASSL_API int  CyaSSL_dtls_set_peer(CYASSL*, void*, unsigned int);
 CYASSL_API int  CyaSSL_dtls_get_peer(CYASSL*, void*, unsigned int*);
