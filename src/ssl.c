@@ -297,7 +297,7 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *addr)
 
         /* We add one new address at the end of the existing ones */
 
-        XMEMCPY(ma->addrs+sizeof(in_addr_t) * (ma->nbrAddrs - 1),
+        XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
                 &inp, sizeof(in_addr_t));
 
         return SSL_SUCCESS;
