@@ -9240,11 +9240,11 @@ static void PickHashSigAlgo(CYASSL* ssl,
                             ma->nbrAddrs += addr_count;
 #ifdef DEBUG_CYASSL
                             int j;
-                            char s[100], addr[100];
+                            char s_addr[INET_ADDRSTRLEN];
+                            CYASSL_MSG("Remote IPs");
                             for (j = 0; j < ma->nbrAddrs; j++) {
-                                inet_ntop(AF_INET, ma->addrs + j * sizeof(in_addr_t), addr, sizeof(in_addr_t));
-                                sprintf(s, "Remote IP %s", addr);
-                                CYASSL_MSG(s);
+                                inet_ntop(AF_INET, ma->addrs + j * sizeof(in_addr_t), s_addr, INET_ADDRSTRLEN);
+                                CYASSL_MSG(s_addr);
                             }
 #endif
                         }
