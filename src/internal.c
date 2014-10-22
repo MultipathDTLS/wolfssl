@@ -1901,8 +1901,8 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
 #endif
 
 #ifdef CYASSL_MPDTLS
-    MpdtlsAddrsInit(ssl->mpdtls_remote);
-    MpdtlsAddrsInit(ssl->mpdtls_host);
+    MpdtlsAddrsInit(ssl, ssl->mpdtls_remote);
+    MpdtlsAddrsInit(ssl, ssl->mpdtls_host);
 #endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1935,7 +1935,7 @@ void FreeArrays(CYASSL* ssl, int keep)
 #ifdef CYASSL_MPDTLS
 
 /* Init struct MPDTLS addr */
-void MpdtlsAddrsInit(MPDTLS_ADDRS* addr){
+void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS* addr) {
     addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
     addr->nbrAddrs = 0;
@@ -1945,7 +1945,8 @@ void MpdtlsAddrsInit(MPDTLS_ADDRS* addr){
 /* Free struct MPDTLS addr */
 
 /* Init struct MPDTLS addr */
-void MpdtlsAddrsFree(MPDTLS_ADDRS* addr){
+void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS* addr) {
+    (void)ssl; // workaround compiler --unused-parameter
     XFREE(addr->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     XFREE(addr, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 }
@@ -1967,8 +1968,8 @@ void SSL_ResourceFree(CYASSL* ssl)
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
 
 #ifdef CYASSL_MPDTLS
-    MpdtlsAddrsFree(ssl->mpdtls_remote);
-    MpdtlsAddrsFree(ssl->mpdtls_host);
+    MpdtlsAddrsFree(ssl, ssl->mpdtls_remote);
+    MpdtlsAddrsFree(ssl, ssl->mpdtls_host);
 #endif
 
 #ifndef NO_CERTS
@@ -9224,6 +9225,29 @@ static void PickHashSigAlgo(CYASSL* ssl,
                     case HELLO_EXT_MP_DTLS:
                         CYASSL_MSG("Extension MPDTLS received");
                         ssl->options.mpdtls = input[i+offset];
+
+                        if (ssl->options.mpdtls == 1) {
+                            word16 addr_count;
+                            MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
+
+                            ato16(input + i + offset + HELLO_EXT_MP_DTLS_LEN, &addr_count);
+
+                            ma->addrs = (in_addr_t*) XREALLOC(ma->addrs, sizeof(in_addr_t) * (addr_count + ma->nbrAddrs),
+                                                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
+                            XMEMCPY(ma->addrs + sizeof(in_addr_t) * ma->nbrAddrs,
+                                    input + i + offset + HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN,
+                                    sizeof(in_addr_t) * addr_count);
+                            ma->nbrAddrs += addr_count;
+#ifdef DEBUG_CYASSL
+                            int j;
+                            char s[100], addr[100];
+                            for (j = 0; j < ma->nbrAddrs; j++) {
+                                inet_ntop(AF_INET, ma->addrs + j * sizeof(in_addr_t), addr, sizeof(in_addr_t));
+                                sprintf(s, "Remote IP %s", addr);
+                                CYASSL_MSG(s);
+                            }
+#endif
+                        }
                         break;
 #endif
                     default:

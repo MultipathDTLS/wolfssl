@@ -1016,10 +1016,6 @@ CYASSL_LOCAL
 void InitSuites(Suites*, ProtocolVersion,
                                      byte, byte, byte, byte, byte, byte, int);
 
-#ifdef CYASSL_MPDTLS
-void MpdtlsAddrsInit(MPDTLS_ADDRS* addr);
-void MpdtlsAddrsFree(MPDTLS_ADDRS* addr);
-#endif
 
 CYASSL_LOCAL
 int  SetCipherList(Suites*, const char* list);
@@ -1149,6 +1145,10 @@ typedef struct MPDTLS_ADDRS {
     in_addr_t*      addrs;              /* Contains all the available addresses for MPDTLS */
     int             nbrAddrs;           /* Number of available addresses */
 } MPDTLS_ADDRS;
+
+
+void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS* addr);
+void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS* addr);
 #endif
 
 /* CyaSSL Certificate Manager */
