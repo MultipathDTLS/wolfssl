@@ -130,6 +130,8 @@ enum {
     RSA_PAD_E           = -201,  /* RSA Padding Error */
     LENGTH_ONLY_E       = -202,  /* Returning output length only */
 
+    PARSE_ADDR_E        = -203,  /* Address not parsable */
+
     MIN_CODE_E          = -300   /* errors -101 - -299 */
 };
 
