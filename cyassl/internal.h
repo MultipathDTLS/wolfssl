@@ -1144,6 +1144,7 @@ struct CYASSL_CRL {
 typedef struct MPDTLS_ADDRS {
     in_addr_t*      addrs;              /* Contains all the available addresses for MPDTLS */
     int             nbrAddrs;           /* Number of available addresses */
+    int             nextRound;          /* Contains the number of the next address (round robin schedule) */
 } MPDTLS_ADDRS;
 
 

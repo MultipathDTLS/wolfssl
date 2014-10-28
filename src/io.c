@@ -437,8 +437,38 @@ int EmbedSendTo(CYASSL* ssl, char *buf, int sz, void *ctx)
 
     CYASSL_ENTER("EmbedSendTo()");
 
-    sent = (int)SENDTO_FUNCTION(sd, &buf[sz - len], len, ssl->wflags,
+    //if mpdtls connection has been established and we know more than 1 remote address, we do round robin
+    if (ssl->options.mpdtls && ssl->options.connectState==SECOND_REPLY_DONE && ssl->mpdtls_remote->nbrAddrs > 1) {
+        MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
+        if (ma->nextRound == ma->nbrAddrs) //we need to reuse the first address
+            ma->nextRound = 0;
+        //we reuse the same parameters as the ones transmitted by the setpeer function
+        struct sockaddr_in *serv_addr = XMALLOC(sizeof(struct sockaddr_in), ssl->heap, DYNAMIC_TYPE_MPDTLS);
+        bzero(serv_addr, sizeof(struct sockaddr_in));
+
+        serv_addr->sin_family = ((struct sockaddr_in *) dtlsCtx->peer.sa)->sin_family;
+        serv_addr->sin_port = ((struct sockaddr_in *) dtlsCtx->peer.sa)->sin_port;
+
+        //we change the original address by the ones we have discovered
+        in_addr_t *selectedAddr = ma->addrs + ma->nextRound;
+        serv_addr->sin_addr.s_addr = *selectedAddr;
+
+#ifdef DEBUG_CYASSL
+
+        char s_addr[INET_ADDRSTRLEN];
+        CYASSL_MSG("Send to addr : ");
+        inet_ntop(AF_INET, selectedAddr, s_addr, INET_ADDRSTRLEN);
+        CYASSL_MSG(s_addr);
+#endif
+
+        sent = (int)SENDTO_FUNCTION(sd, &buf[sz - len], len, ssl->wflags,
+                                (struct sockaddr*) serv_addr, dtlsCtx->peer.sz);
+        ma->nextRound++; //we increment for next send
+
+    }else{
+        sent = (int)SENDTO_FUNCTION(sd, &buf[sz - len], len, ssl->wflags,
                                 dtlsCtx->peer.sa, dtlsCtx->peer.sz);
+    }
     if (sent < 0) {
         err = LastError();
         CYASSL_MSG("Embed Send To error");

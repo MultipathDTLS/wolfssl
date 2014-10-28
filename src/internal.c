@@ -1939,6 +1939,7 @@ void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr) {
     *addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
     (*addr)->nbrAddrs = 0;
+    (*addr)->nextRound = 0;
     (*addr)->addrs = NULL;
 }
 
