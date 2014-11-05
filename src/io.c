@@ -437,6 +437,7 @@ int EmbedSendTo(CYASSL* ssl, char *buf, int sz, void *ctx)
 
     CYASSL_ENTER("EmbedSendTo()");
 
+#ifdef CYASSL_MPDTLS
     //if mpdtls connection has been established and we know more than 1 remote address, we do round robin
     if (ssl->options.mpdtls && ssl->options.connectState==SECOND_REPLY_DONE && ssl->mpdtls_remote->nbrAddrs > 1) {
         MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
@@ -465,10 +466,10 @@ int EmbedSendTo(CYASSL* ssl, char *buf, int sz, void *ctx)
                                 (struct sockaddr*) serv_addr, dtlsCtx->peer.sz);
         ma->nextRound++; //we increment for next send
 
-    }else{
+    } else
+#endif
         sent = (int)SENDTO_FUNCTION(sd, &buf[sz - len], len, ssl->wflags,
                                 dtlsCtx->peer.sa, dtlsCtx->peer.sz);
-    }
     if (sent < 0) {
         err = LastError();
         CYASSL_MSG("Embed Send To error");
