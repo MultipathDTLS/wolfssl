@@ -221,6 +221,65 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
         }
     #endif
 
+    #ifdef CYASSL_MPDTLS
+        CyaSSL_mpdtls_add_fd(ssl,fd);
+
+        struct sockaddr cl;
+        socklen_t sz = sizeof(struct sockaddr);
+        getpeername(fd, &cl, &sz);
+        struct sockaddr_in hs;
+        sz = sizeof(struct sockaddr_in);
+        getsockname(fd, (struct sockaddr *) &hs, &sz);
+
+        int i, sd, inError;
+        for (i = 0, inError = 0; i < ssl->mpdtls_host->nbrAddrs; i++, inError = 0) {
+            if (ssl->mpdtls_host->addrs[i] == hs.sin_addr.s_addr) {
+                /*
+                 * If the current address is the one used for the handshake, skip it, already added.
+                 */
+                continue;
+            } 
+
+            struct sockaddr_in *serv_addr = malloc(sizeof(struct sockaddr_in));
+            bzero(serv_addr, sizeof(struct sockaddr_in));
+
+            serv_addr->sin_family = hs.sin_family;
+            serv_addr->sin_port = hs.sin_port;
+            serv_addr->sin_addr.s_addr = ssl->mpdtls_host->addrs[i];
+
+            if((sd=socket(hs.sin_family,SOCK_DGRAM,0))<0) {
+                // TODO beautiful error
+                CYASSL_MSG("Error opening socket");
+                inError = 1;
+            }
+
+                // set SO_REUSEADDR on a socket to true (1):
+            int optval = 1;
+            setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+
+                //bind server socket to INADDR_ANY
+            if (bind(sd, (struct sockaddr *) serv_addr,sizeof(struct sockaddr_in)) < 0) {
+                    // TODO beautiful error
+                CYASSL_MSG("ERROR on binding");
+                inError = 1;
+            }
+
+            if (connect(sd, &cl, sizeof(cl)) != 0) {
+                CYASSL_MSG("ERROR udp connect failed");
+                inError = 1;
+            }
+
+            if (inError == 0) {
+                CyaSSL_mpdtls_add_fd(ssl, sd);
+            } else {
+                CYASSL_MSG("Invalid Address detected, removing it from the pool");
+                CyaSSL_mpdtls_del_addr_index(ssl,i);
+                i--;
+            }
+        }
+    #endif
+
     CYASSL_LEAVE("SSL_set_fd", SSL_SUCCESS);
     return SSL_SUCCESS;
 }
@@ -298,12 +357,77 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *addr)
         /* We add one new address at the end of the existing ones */
 
         XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
-                &inp, sizeof(in_addr_t));
+                &(inp.s_addr), sizeof(in_addr_t));
 
         return SSL_SUCCESS;
     } else {
         return PARSE_ADDR_E;
     }
+}
+
+int CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *addr)
+{
+    struct in_addr inp;
+    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+    if (inet_pton(AF_INET, addr, &inp) > 0) {
+        int index, found = 0;
+        
+        for (index = 0; index < ma->nbrAddrs; index++) {
+            if (inp.s_addr == ma->addrs[index]) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (found == 1) {
+            CyaSSL_mpdtls_del_addr_index(ssl, index);
+            return SSL_SUCCESS;
+        } else {
+            return NOT_FOUND_ADDR_E;
+        }
+
+    } else {
+        return PARSE_ADDR_E;
+    }
+}
+
+int CyaSSL_mpdtls_del_addr_index(CYASSL* ssl, int index)
+{
+    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+    if (ma->nbrAddrs > index && index >= 0) {
+        ma->nbrAddrs--;
+
+        if (index != ma->nbrAddrs) {
+            /*
+             * If the index is the last index of the array, we don't need to move anything.
+             * Else, move all the addresses after the removed index one cell backward.
+             */
+            XMEMMOVE(ma->addrs + index,
+                     ma->addrs + index + 1,
+                     sizeof(in_addr_t) * (ma->nbrAddrs - index));
+        }
+
+        ma->addrs = (in_addr_t*) XREALLOC(ma->addrs,
+                                          sizeof(in_addr_t) * ma->nbrAddrs,
+                                          ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+
+        return SSL_SUCCESS;
+    } else {
+        return BUFFER_E;
+    }
+}
+
+int CyaSSL_mpdtls_add_fd(CYASSL* ssl, int fd) {
+    MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
+    ms->nbrSocks++;
+    ms->socks = (int*) XREALLOC(ms->socks,
+                                sizeof(int) * ms->nbrSocks,
+                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+    /* We add one new socket at the end of the existing ones */
+    ms->socks[ms->nbrSocks - 1] = fd;
+
+    return SSL_SUCCESS;
 }
 
 #endif
@@ -5186,7 +5310,7 @@ int CyaSSL_dtls_got_timeout(CYASSL* ssl)
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
         #ifdef CYASSL_MPDTLS
-                ssl->options.mpdtls = 0;
+                ssl->options.mpdtls = 1;
         #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
