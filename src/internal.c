@@ -2786,11 +2786,38 @@ static int Receive(CYASSL* ssl, byte* buf, word32 sz)
 retry:
 #ifdef CYASSL_MPDTLS
     if (ssl->options.mpdtls == 1 && ssl->options.handShakeState==HANDSHAKE_DONE) {
-        if (ssl->mpdtls_socks->nextReadRound == ssl->mpdtls_socks->nbrSocks) {
-            ssl->mpdtls_socks->nextReadRound = 0;
+        fd_set recvfds, errfds;
+        struct timeval timeout = {20, 0};
+        int i, result=0, maxfd = 0, sd;
+        FD_ZERO(&recvfds);
+        FD_ZERO(&errfds);
+        for (i=0; i< ssl->mpdtls_socks->nbrSocks;i++) {
+            sd = ssl->mpdtls_socks->socks[i];
+            FD_SET(sd,&recvfds);
+            FD_SET(sd,&errfds);
+            if(sd > maxfd)
+                maxfd = sd;
         }
-        ssl->buffers.dtlsCtx.fd = ssl->mpdtls_socks->socks[ssl->mpdtls_socks->nextReadRound++];
-        CYASSL_MSG("CHANGE THE SOCKET");
+
+        result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
+        CYASSL_LEAVE("Select", result);
+        if (result!=0) {
+            for (i=0; i< ssl->mpdtls_socks->nbrSocks;i++) {
+                int index = (i+ ssl->mpdtls_socks->nextReadRound) % ssl->mpdtls_socks->nbrSocks;
+                sd = ssl->mpdtls_socks->socks[index];
+                if(FD_ISSET(sd,&recvfds)) {
+                    ssl->mpdtls_socks->nextReadRound = (index+1) % ssl->mpdtls_socks->nbrSocks;
+                    ssl->buffers.dtlsCtx.fd = sd;
+                    break;
+                }
+                if (FD_ISSET(sd, &errfds)) {
+                    CYASSL_MSG("Error from select");
+                }
+            }
+            CYASSL_MSG("CHANGE THE SOCKET");
+        } else { // TIME OUT 
+            goto retry; 
+        }
     }
 #endif
 

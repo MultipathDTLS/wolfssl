@@ -419,7 +419,7 @@ int EmbedReceiveFrom(CYASSL *ssl, char *buf, int sz, void *ctx)
             return CYASSL_CBIO_ERR_WANT_READ;
         }
     }
-
+    CYASSL_LEAVE("EmbedReceiveFrom()",recvd);
     return recvd;
 }
 
