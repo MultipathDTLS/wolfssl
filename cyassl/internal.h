@@ -1150,6 +1150,17 @@ typedef struct MPDTLS_ADDRS {
 
 void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr);
 void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr);
+
+
+typedef struct MPDTLS_SOCKS {
+    int*            socks;              /* Contains all the available sockets for MPDTLS */
+    int             nbrSocks;           /* Number of available sockets */
+    int             nextReadRound;      /* Contains the number of the next sockets (round robin schedule) */
+} MPDTLS_SOCKS;
+
+
+void MpdtlsSocksInit(CYASSL* ssl, MPDTLS_SOCKS** addr);
+void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** addr);
 #endif
 
 /* CyaSSL Certificate Manager */
@@ -2059,6 +2070,7 @@ struct CYASSL {
 #ifdef CYASSL_MPDTLS
     MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
+    MPDTLS_SOCKS*   mpdtls_socks;       /* available sockets */
 #endif
 #endif
 #ifdef CYASSL_CALLBACKS

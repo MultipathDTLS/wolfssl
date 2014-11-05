@@ -1687,7 +1687,11 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
     ssl->options.quietShutdown = ctx->quietShutdown;
     ssl->options.certOnly = 0;
     ssl->options.groupMessages = ctx->groupMessages;
+#ifdef CYASSL_MPDTLS
+    ssl->options.usingNonblock = 1;
+#else
     ssl->options.usingNonblock = 0;
+#endif
     ssl->options.saveArrays = 0;
 #ifdef HAVE_POLY1305
     ssl->options.oldPoly = 0;
@@ -1903,6 +1907,7 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
 #ifdef CYASSL_MPDTLS
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
+    MpdtlsSocksInit(ssl, &(ssl->mpdtls_socks));
 #endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1944,8 +1949,6 @@ void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr) {
 }
 
 /* Free struct MPDTLS addr */
-
-/* Init struct MPDTLS addr */
 void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr) {
     (void)ssl; // workaround compiler --unused-parameter
     XFREE((*addr)->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
@@ -1954,6 +1957,22 @@ void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr) {
 }
 
 
+/* Init struct MPDTLS addr */
+void MpdtlsSocksInit(CYASSL* ssl, MPDTLS_SOCKS** socks) {
+    *socks = (MPDTLS_SOCKS*) XMALLOC(sizeof(MPDTLS_SOCKS), 
+                                    ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    (*socks)->nbrSocks = 0;
+    (*socks)->nextReadRound = 0;
+    (*socks)->socks = NULL;
+}
+
+/* Free struct MPDTLS addr */
+void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** socks) {
+    (void)ssl; // workaround compiler --unused-parameter
+    XFREE((*socks)->socks, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(*socks, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    *socks = NULL;
+}
 #endif
 
 
@@ -1972,6 +1991,7 @@ void SSL_ResourceFree(CYASSL* ssl)
 #ifdef CYASSL_MPDTLS
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
+    MpdtlsSocksFree(ssl, &(ssl->mpdtls_socks));
 #endif
 
 #ifndef NO_CERTS
@@ -2764,6 +2784,16 @@ static int Receive(CYASSL* ssl, byte* buf, word32 sz)
     }
 
 retry:
+#ifdef CYASSL_MPDTLS
+    if (ssl->options.mpdtls == 1 && ssl->options.handShakeState==HANDSHAKE_DONE) {
+        if (ssl->mpdtls_socks->nextReadRound == ssl->mpdtls_socks->nbrSocks) {
+            ssl->mpdtls_socks->nextReadRound = 0;
+        }
+        ssl->buffers.dtlsCtx.fd = ssl->mpdtls_socks->socks[ssl->mpdtls_socks->nextReadRound++];
+        CYASSL_MSG("CHANGE THE SOCKET");
+    }
+#endif
+
     recvd = ssl->ctx->CBIORecv(ssl, (char *)buf, (int)sz, ssl->IOCB_ReadCtx);
     if (recvd < 0)
         switch (recvd) {
