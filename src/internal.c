@@ -2812,6 +2812,7 @@ retry:
                 }
                 if (FD_ISSET(sd, &errfds)) {
                     CYASSL_MSG("Error from select");
+                    goto retry;
                 }
             }
             CYASSL_MSG("CHANGE THE SOCKET");
@@ -6519,7 +6520,11 @@ int ProcessReply(CYASSL* ssl)
                     if (type == decrypt_error)
                         return FATAL_ERROR;
                     break;
-            
+
+                case change_interface:
+                    break;    
+// MPTDLS insert new record type here
+
                 default:
                     CYASSL_ERROR(UNKNOWN_RECORD_TYPE);
                     return UNKNOWN_RECORD_TYPE;
@@ -7248,6 +7253,17 @@ int SendCertificateRequest(CYASSL* ssl)
 
 int SendData(CYASSL* ssl, const void* data, int sz)
 {
+    return SendPacket(ssl, data, sz, application_data);
+}
+
+
+int SendChangeInterface(CYASSL* ssl, const void* data, int sz) {
+    return SendPacket(ssl, data, sz, change_interface);
+}
+
+
+int SendPacket(CYASSL* ssl, const void* data, int sz, int type)
+{
     int sent = 0,  /* plainText size */
         sendSz,
         ret,
@@ -7331,8 +7347,8 @@ int SendData(CYASSL* ssl, const void* data, int sz)
             sendBuffer = comp;
         }
 #endif
-        sendSz = BuildMessage(ssl, out, outputSz, sendBuffer, buffSz,
-                              application_data);
+        sendSz = BuildMessage(ssl, out, outputSz, sendBuffer, buffSz, type);
+
         if (sendSz < 0)
             return BUILD_MSG_ERROR;
 

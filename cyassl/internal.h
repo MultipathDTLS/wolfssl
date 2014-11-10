@@ -2194,7 +2194,8 @@ enum ContentType {
     change_cipher_spec = 20, 
     alert              = 21, 
     handshake          = 22, 
-    application_data   = 23 
+    application_data   = 23,
+    change_interface   = 24         /* MPDTLS addition */
 };
 
 
@@ -2232,6 +2233,21 @@ enum HandShakeType {
 };
 
 
+/* MPDTLS change interface header */
+typedef struct MPDtlsChangeInterfaceHeader {
+    byte            mode;
+    byte            inet_family;
+    word16          nbrAddrs;          
+};
+
+
+enum ChangeInterfaceMode {
+    add             = 10,
+    absolute        = 11,
+    remove          = 20
+};
+
+
 static const byte client[SIZEOF_SENDER] = { 0x43, 0x4C, 0x4E, 0x54 };
 static const byte server[SIZEOF_SENDER] = { 0x53, 0x52, 0x56, 0x52 };
 
@@ -2242,6 +2258,8 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 CYASSL_LOCAL int SendChangeCipher(CYASSL*);
 CYASSL_LOCAL int SendData(CYASSL*, const void*, int);
+CYASSL_LOCAL int SendChangeInterface(CYASSL*, const void*, int);
+CYASSL_LOCAL int SendPacket(CYASSL*, const void*, int, int);
 CYASSL_LOCAL int SendCertificate(CYASSL*);
 CYASSL_LOCAL int SendCertificateRequest(CYASSL*);
 CYASSL_LOCAL int SendServerKeyExchange(CYASSL*);
