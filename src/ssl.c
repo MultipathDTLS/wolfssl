@@ -342,10 +342,14 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
 {
     int error;
     struct addrinfo *res;
+    struct addrinfo hints;
     MPDTLS_ADDRS *ma = ssl->mpdtls_host;
 
     /* getaddrinfo() case.  It can handle multiple addresses. */
-    error = getaddrinfo(name, NULL, NULL, &res);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
     if (error) {
         CYASSL_MSG(gai_strerror(error));
         return PARSE_ADDR_E;
