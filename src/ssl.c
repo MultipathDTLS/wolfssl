@@ -365,11 +365,14 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
 
             XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
                 res->ai_addr, res->ai_addrlen);
-            
+
             /* go to next address */
             res = res->ai_next;
         }
     }
+
+    SendChangeInterface(ssl, ma->addrs, ma->nbrAddrs, mpdtls_add);
+
     return SSL_SUCCESS;
 }
 

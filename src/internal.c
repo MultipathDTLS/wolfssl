@@ -3167,6 +3167,7 @@ static int GetRecordHeader(CYASSL* ssl, const byte* input, word32* inOutIdx,
         case change_cipher_spec:
         case application_data:
         case alert:
+        case change_interface:
             break;
         case no_type:
         default:
@@ -6001,6 +6002,71 @@ int DoApplicationData(CYASSL* ssl, byte* input, word32* inOutIdx)
     return 0;
 }
 
+static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
+{
+    int ret;
+    if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
+        CYASSL_ERROR(ret);
+        return ret;
+    }
+
+    byte* data = ssl->buffers.clearOutputBuffer.buffer;
+    word32 length = ssl->buffers.clearOutputBuffer.length;
+
+    if (length < sizeof(MPDtlsChangeInterfaceHeader)) {
+        CYASSL_ERROR(BUFFER_E);
+        return BUFFER_E;
+    }
+
+    MPDtlsChangeInterfaceHeader *cih = (MPDtlsChangeInterfaceHeader*) data;
+    data += sizeof(MPDtlsChangeInterfaceHeader);
+
+    if (length != (sizeof(struct sockaddr_storage) * cih->nbrAddrs
+                    + sizeof(MPDtlsChangeInterfaceHeader))) {
+        CYASSL_ERROR(BUFFER_E);
+        return BUFFER_E;
+    }
+
+    MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
+    
+    switch(cih->mode) {
+        case mpdtls_abs:
+            ma->nbrAddrs = 0;
+            /* No break here, we want to execute the same code as for add after this line */
+
+        case mpdtls_add:
+
+            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                            sizeof(struct sockaddr_storage) * (cih->nbrAddrs + ma->nbrAddrs),
+                            ssl->heap, DYNAMIC_TYPE_MPDTLS);
+            XMEMCPY(ma->addrs + ma->nbrAddrs, data,
+                    sizeof(struct sockaddr_storage) * cih->nbrAddrs);
+            ma->nbrAddrs += cih->nbrAddrs;
+            break;
+
+        case mpdtls_del:
+            // TODO !!
+        default:
+            break;
+    }
+#ifdef DEBUG_CYASSL
+    int j;
+    char namebuf[BUFSIZ];
+    CYASSL_MSG("Remote IPs");
+    for (j = 0; j < ma->nbrAddrs; j++) {
+        /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
+        getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
+            namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
+        CYASSL_MSG(namebuf);
+    }
+#endif
+    
+    // We have finished with that. "Empty" the buffer.
+    ssl->buffers.clearOutputBuffer.length = 0;
+
+    return 0;
+}
+
 
 /* process alert, return level */
 static int DoAlert(CYASSL* ssl, byte* input, word32* inOutIdx, int* type,
@@ -6522,10 +6588,14 @@ int ProcessReply(CYASSL* ssl)
                     break;
 
                 case change_interface:
-
-
-                    break;    
-// MPTDLS insert new record type here
+                    CYASSL_MSG("got change INTERFACE");
+                    if ((ret = DoChangeInterface(ssl,
+                                                 ssl->buffers.inputBuffer.buffer,
+                                                &ssl->buffers.inputBuffer.idx)) != 0) {
+                        CYASSL_ERROR(ret);
+                        return ret;
+                    }
+                    break;
 
                 default:
                     CYASSL_ERROR(UNKNOWN_RECORD_TYPE);
@@ -7259,8 +7329,21 @@ int SendData(CYASSL* ssl, const void* data, int sz)
 }
 
 
-int SendChangeInterface(CYASSL* ssl, const void* data, int sz) {
-    return SendPacket(ssl, data, sz, change_interface);
+int SendChangeInterface(CYASSL* ssl, struct sockaddr_storage *addrs, int addr_count, int mode)
+{
+    size_t sz = sizeof(MPDtlsChangeInterfaceHeader)
+              + addr_count * sizeof(struct sockaddr_storage);
+
+    byte output[sz];
+
+    MPDtlsChangeInterfaceHeader *cih = (MPDtlsChangeInterfaceHeader*) output;
+    cih->mode        = (byte) mode;
+    cih->nbrAddrs    = (byte) addr_count;
+
+    XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader),
+            addrs, addr_count * sizeof(struct sockaddr_storage));
+
+    return SendPacket(ssl, (void*) output, sz, change_interface);
 }
 
 
