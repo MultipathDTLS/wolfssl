@@ -6522,6 +6522,8 @@ int ProcessReply(CYASSL* ssl)
                     break;
 
                 case change_interface:
+
+
                     break;    
 // MPTDLS insert new record type here
 
@@ -9307,19 +9309,21 @@ static void PickHashSigAlgo(CYASSL* ssl,
 
                             ato16(input + i + offset + HELLO_EXT_MP_DTLS_LEN, &addr_count);
 
-                            ma->addrs = (in_addr_t*) XREALLOC(ma->addrs, sizeof(in_addr_t) * (addr_count + ma->nbrAddrs),
+                            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs, sizeof(struct sockaddr_storage) * (addr_count + ma->nbrAddrs),
                                                                  ssl->heap, DYNAMIC_TYPE_MPDTLS);
                             XMEMCPY(ma->addrs + ma->nbrAddrs,
                                     input + i + offset + HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN,
-                                    sizeof(in_addr_t) * addr_count);
+                                    sizeof(struct sockaddr_storage) * addr_count);
                             ma->nbrAddrs += addr_count;
 #ifdef DEBUG_CYASSL
                             int j;
-                            char s_addr[INET_ADDRSTRLEN];
+                            char namebuf[BUFSIZ];
                             CYASSL_MSG("Remote IPs");
                             for (j = 0; j < ma->nbrAddrs; j++) {
-                                inet_ntop(AF_INET, ma->addrs + j, s_addr, INET_ADDRSTRLEN);
-                                CYASSL_MSG(s_addr);
+                                /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
+                                getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
+                                    namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
+                                CYASSL_MSG(namebuf);
                             }
 #endif
                         }
@@ -10739,7 +10743,7 @@ int DoSessionTicket(CYASSL* ssl,
 #ifdef CYASSL_MPDTLS
         if (ssl->options.dtls & ssl->options.mpdtls)
             totalExtSz += HELLO_EXT_MP_DTLS_SZ + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                        + (sizeof(in_addr_t) * ssl->mpdtls_host->nbrAddrs);
+                        + (sizeof(struct sockaddr_storage) * ssl->mpdtls_host->nbrAddrs);
 #endif
         if (totalExtSz > 0)
             length += totalExtSz + OPAQUE16_LEN;
@@ -10821,7 +10825,7 @@ int DoSessionTicket(CYASSL* ssl,
                 c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
                 idx += 2;
                 word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                                         + (sizeof(in_addr_t) * ssl->mpdtls_host->nbrAddrs);
+                                         + (sizeof(struct sockaddr_storage) * ssl->mpdtls_host->nbrAddrs);
                 c16toa(mpdtls_ext_length, output + idx); //we put the size of the data
                 idx += 2;
                 output[idx] = 0x01; //the flag is ON since we support mpdtls
@@ -10831,9 +10835,9 @@ int DoSessionTicket(CYASSL* ssl,
                 c16toa(nbrAddrs, output+idx); //we indicate the number of addrs we want to transmit
                 idx += HELLO_EXT_MP_DTLS_ADDR_LEN;
                 XMEMCPY(output + idx, ssl->mpdtls_host->addrs,
-                            sizeof(in_addr_t) * nbrAddrs);
+                            sizeof(struct sockaddr_storage) * nbrAddrs);
 
-                idx+= sizeof(in_addr_t) * nbrAddrs;
+                idx+= sizeof(struct sockaddr_storage) * nbrAddrs;
             }
 #endif
         }

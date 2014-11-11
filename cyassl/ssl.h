@@ -33,6 +33,7 @@
 #ifdef CYASSL_MPDTLS
     #include <netinet/in.h>
     #include <arpa/inet.h>
+    #include <netdb.h>
 #endif
 
 #ifndef NO_FILESYSTEM

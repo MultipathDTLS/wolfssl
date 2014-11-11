@@ -227,45 +227,37 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
         struct sockaddr cl;
         socklen_t sz = sizeof(struct sockaddr);
         getpeername(fd, &cl, &sz);
-        struct sockaddr_in hs;
-        sz = sizeof(struct sockaddr_in);
-        getsockname(fd, (struct sockaddr *) &hs, &sz);
+        struct sockaddr_storage hs;
+        sz = sizeof(struct sockaddr_storage);
+        getsockname(fd, (struct sockaddr*) &hs, &sz);
 
         int i, sd, inError;
         for (i = 0, inError = 0; i < ssl->mpdtls_host->nbrAddrs; i++, inError = 0) {
-            if (ssl->mpdtls_host->addrs[i] == hs.sin_addr.s_addr) {
+            if (memcmp(&(ssl->mpdtls_host->addrs[i]), &hs, sizeof(struct sockaddr_storage)) == 0) {
                 /*
                  * If the current address is the one used for the handshake, skip it, already added.
                  */
                 continue;
-            } 
+            }
 
-            struct sockaddr_in *serv_addr = malloc(sizeof(struct sockaddr_in));
-            bzero(serv_addr, sizeof(struct sockaddr_in));
-
-            serv_addr->sin_family = hs.sin_family;
-            serv_addr->sin_port = hs.sin_port;
-            serv_addr->sin_addr.s_addr = ssl->mpdtls_host->addrs[i];
-
-            if((sd=socket(hs.sin_family,SOCK_DGRAM,0))<0) {
-                // TODO beautiful error
+            if((sd=socket(ssl->mpdtls_host->addrs[i].ss_family,SOCK_DGRAM,0))<0) {
                 CYASSL_MSG("Error opening socket");
                 inError = 1;
             }
 
+            if(inError == 0){
                 // set SO_REUSEADDR on a socket to true (1):
-            int optval = 1;
-            setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-
+                int optval = 1;
+                setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
                 //bind server socket to INADDR_ANY
-            if (bind(sd, (struct sockaddr *) serv_addr,sizeof(struct sockaddr_in)) < 0) {
-                    // TODO beautiful error
-                CYASSL_MSG("ERROR on binding");
-                inError = 1;
+                if (bind(sd, (struct sockaddr *) &(ssl->mpdtls_host->addrs[i]), sizeof(struct sockaddr_storage)) < 0) {
+                    CYASSL_MSG("ERROR on binding");
+                    inError = 1;
+                }
             }
 
-            if (connect(sd, &cl, sizeof(cl)) != 0) {
+            if (inError == 0 && connect(sd, &cl, sizeof(cl)) != 0) {
                 CYASSL_MSG("ERROR udp connect failed");
                 inError = 1;
             }
@@ -343,52 +335,71 @@ int CyaSSL_mpdtls(CYASSL* ssl)
     return ssl->options.mpdtls;
 }
 
+
+
 #ifdef CYASSL_MPDTLS
-int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *addr)
+int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
 {
-    struct in_addr inp;
+    int error;
+    struct addrinfo *res;
     MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-    if (inet_pton(AF_INET, addr, &inp) > 0) {
-        ma->nbrAddrs++;
-        ma->addrs = (in_addr_t*) XREALLOC(ma->addrs,
-                                          sizeof(in_addr_t) * ma->nbrAddrs,
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    error = getaddrinfo(name, NULL, NULL, &res);
+    if (error) {
+        CYASSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        while (res) {
+            
+            ma->nbrAddrs++;
+            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                          sizeof(struct sockaddr_storage) * ma->nbrAddrs,
                                           ssl->heap, DYNAMIC_TYPE_SOCKADDR);
 
-        /* We add one new address at the end of the existing ones */
+            /* We add one new address at the end of the existing ones */
 
-        XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
-                &(inp.s_addr), sizeof(in_addr_t));
-
-        return SSL_SUCCESS;
-    } else {
-        return PARSE_ADDR_E;
+            XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+                res->ai_addr, res->ai_addrlen);
+            
+            /* go to next address */
+            res = res->ai_next;
+        }
     }
+    return SSL_SUCCESS;
 }
 
-int CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *addr)
+int CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *name)
 {
-    struct in_addr inp;
+    int error;
+    struct addrinfo *res;
     MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-    if (inet_pton(AF_INET, addr, &inp) > 0) {
-        int index, found = 0;
-        
-        for (index = 0; index < ma->nbrAddrs; index++) {
-            if (inp.s_addr == ma->addrs[index]) {
-                found = 1;
-                break;
-            }
-        }
 
-        if (found == 1) {
-            CyaSSL_mpdtls_del_addr_index(ssl, index);
-            return SSL_SUCCESS;
-        } else {
-            return NOT_FOUND_ADDR_E;
-        }
-
-    } else {
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    error = getaddrinfo(name, NULL, NULL, &res);
+    if (error) {
+        CYASSL_MSG(gai_strerror(error));
         return PARSE_ADDR_E;
+    } else {
+        while (res) {
+            int index, found = 0;
+        
+            for (index = 0; index < ma->nbrAddrs; index++) {
+                if (memcmp(res->ai_addr, &(ma->addrs[index]), sizeof(struct sockaddr_storage)) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (found == 1) {
+                CyaSSL_mpdtls_del_addr_index(ssl, index);
+            }
+                
+            /* go to next address */
+            res = res->ai_next;
+        }
     }
+    return SSL_SUCCESS;
 }
 
 int CyaSSL_mpdtls_del_addr_index(CYASSL* ssl, int index)
@@ -404,11 +415,11 @@ int CyaSSL_mpdtls_del_addr_index(CYASSL* ssl, int index)
              */
             XMEMMOVE(ma->addrs + index,
                      ma->addrs + index + 1,
-                     sizeof(in_addr_t) * (ma->nbrAddrs - index));
+                     sizeof(struct sockaddr_storage) * (ma->nbrAddrs - index));
         }
 
-        ma->addrs = (in_addr_t*) XREALLOC(ma->addrs,
-                                          sizeof(in_addr_t) * ma->nbrAddrs,
+        ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                          sizeof(struct sockaddr_storage) * ma->nbrAddrs,
                                           ssl->heap, DYNAMIC_TYPE_SOCKADDR);
 
         return SSL_SUCCESS;

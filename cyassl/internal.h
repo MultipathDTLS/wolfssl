@@ -1142,9 +1142,9 @@ struct CYASSL_CRL {
 #ifdef CYASSL_MPDTLS
 /* MPDTLS address manager */
 typedef struct MPDTLS_ADDRS {
-    in_addr_t*      addrs;              /* Contains all the available addresses for MPDTLS */
-    int             nbrAddrs;           /* Number of available addresses */
-    int             nextRound;          /* Contains the number of the next address (round robin schedule) */
+    int                        nbrAddrs;          /* Number of available addresses */
+    int                       nextRound;          /* Contains the number of the next address (round robin schedule) */
+    struct sockaddr_storage*      addrs;          /* Contains all the available addresses for MPDTLS (both IPV4 or IPV6) */
 } MPDTLS_ADDRS;
 
 
@@ -2238,13 +2238,13 @@ typedef struct MPDtlsChangeInterfaceHeader {
     byte            mode;
     byte            inet_family;
     word16          nbrAddrs;          
-};
+} MPDtlsChangeInterfaceHeader;
 
 
 enum ChangeInterfaceMode {
-    add             = 10,
-    absolute        = 11,
-    remove          = 20
+    mpdtls_add      = 10,
+    mpdtls_abs      = 11,           /* Absolute */
+    mpdtls_del      = 20            /* Delete */
 };
 
 
