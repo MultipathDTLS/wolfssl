@@ -2471,6 +2471,46 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
 
 #endif /* CYASSL_DTLS */
 
+#ifdef CYASSL_MPDTLS
+    int GetFreePortNumber(int family, const struct sockaddr *sa)
+    {
+        CYASSL_ENTER("GetFreePortNumber");
+
+        int sock = socket(family, SOCK_DGRAM, 0);
+        if (sock < 0) {
+            CYASSL_ERROR(sock);
+            return sock;
+        }
+
+        if (bind(sock, sa, sizeof(*sa)) < 0) {
+            CYASSL_ERROR(-1);
+            return -1;
+        }
+
+        struct sockaddr so;
+        socklen_t sz = sizeof(so);
+
+        if (getsockname(sock, &so, &sz) < 0) {
+            close(sock);
+            CYASSL_ERROR(-1);
+            return -1;
+        }
+
+        // REMEMBER THE SOCK
+
+        int ret = -1;
+        if (family == AF_INET) {
+            ret = ((struct sockaddr_in *) &so)->sin_port;
+        } else if (family == AF_INET6) {
+            ret = ((struct sockaddr_in6 *) &so)->sin6_port;
+        }
+
+        CYASSL_LEAVE("GetFreePortNumber", ret);
+        return ret;
+    }
+
+#endif /* CYASSL_MPDTLS */
+
 #ifndef NO_OLD_TLS
 
 ProtocolVersion MakeSSLv3(void)

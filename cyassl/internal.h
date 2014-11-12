@@ -2333,6 +2333,10 @@ CYASSL_LOCAL  int GrowInputBuffer(CYASSL* ssl, int size, int usedLength);
     CYASSL_LOCAL DtlsMsg* DtlsMsgInsert(DtlsMsg*, DtlsMsg*);
 #endif /* CYASSL_DTLS */
 
+#ifdef CYASSL_MPDTLS
+    CYASSL_LOCAL int GetFreePortNumber(int, const struct sockaddr*);
+#endif /* CYASSL_LOCAL */
+
 #ifndef NO_TLS
     
 

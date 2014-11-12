@@ -459,7 +459,7 @@ int EmbedSendTo(CYASSL* ssl, char *buf, int sz, void *ctx)
 #endif
 
         sent = (int)SENDTO_FUNCTION(sd, &buf[sz - len], len, ssl->wflags,
-                                (struct sockaddr*) selectedAddr, dtlsCtx->peer.sz);
+                                (struct sockaddr*) selectedAddr, sizeof(*selectedAddr));
         ma->nextRound++; //we increment for next send
 
     } else
