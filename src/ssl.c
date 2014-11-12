@@ -226,50 +226,32 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
 
         struct sockaddr cl;
         socklen_t sz = sizeof(struct sockaddr);
-        getpeername(fd, &cl, &sz);
-        struct sockaddr_storage hs;
-        sz = sizeof(struct sockaddr_storage);
-        getsockname(fd, (struct sockaddr*) &hs, &sz);
+        if (getpeername(fd, &cl, &sz) == 0) {
+            MPDTLS_ADDRS *ma = ssl->mpdtls_remote;
+            ma->nbrAddrs++;
+            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                          sizeof(struct sockaddr_storage) * ma->nbrAddrs,
+                                          ssl->heap, DYNAMIC_TYPE_SOCKADDR);
 
-        int i, sd, inError;
-        for (i = 0, inError = 0; i < ssl->mpdtls_host->nbrAddrs; i++, inError = 0) {
-            if (memcmp(&(ssl->mpdtls_host->addrs[i]), &hs, sizeof(struct sockaddr_storage)) == 0) {
-                /*
-                 * If the current address is the one used for the handshake, skip it, already added.
-                 */
-                continue;
-            }
+            /* We add one new address at the end of the existing ones */
 
-            if((sd=socket(ssl->mpdtls_host->addrs[i].ss_family,SOCK_DGRAM,0))<0) {
-                CYASSL_MSG("Error opening socket");
-                inError = 1;
-            }
-
-            if(inError == 0){
-                // set SO_REUSEADDR on a socket to true (1):
-                int optval = 1;
-                setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-
-                //bind server socket to INADDR_ANY
-                if (bind(sd, (struct sockaddr *) &(ssl->mpdtls_host->addrs[i]), sizeof(struct sockaddr_storage)) < 0) {
-                    CYASSL_MSG("ERROR on binding");
-                    inError = 1;
-                }
-            }
-
-            if (inError == 0 && connect(sd, &cl, sizeof(cl)) != 0) {
-                CYASSL_MSG("ERROR udp connect failed");
-                inError = 1;
-            }
-
-            if (inError == 0) {
-                CyaSSL_mpdtls_add_fd(ssl, sd);
-            } else {
-                CYASSL_MSG("Invalid Address detected, removing it from the pool");
-                CyaSSL_mpdtls_del_addr_index(ssl,i);
-                i--;
-            }
+            XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+                    &cl, sz);
         }
+        
+        if (getsockname(fd, &cl, &sz) == 0) {
+            MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+            ma->nbrAddrs++;
+            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                          sizeof(struct sockaddr_storage) * ma->nbrAddrs,
+                                          ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+
+            /* We add one new address at the end of the existing ones */
+
+            XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+                    &cl, sz);
+        }
+
     #endif
 
     CYASSL_LEAVE("SSL_set_fd", SSL_SUCCESS);
@@ -336,7 +318,6 @@ int CyaSSL_mpdtls(CYASSL* ssl)
 }
 
 
-
 #ifdef CYASSL_MPDTLS
 int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
 {
@@ -379,7 +360,9 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
     }
 
     // Need something clean here (ack or smtg)
-    SendChangeInterface(ssl, ma->addrs, ma->nbrAddrs, mpdtls_abs);
+    SendChangeInterface(ssl, ma->addrs + (ma->nbrAddrs - 1), 1, mpdtls_add);
+
+    mpdtlsSyncSock(ssl);
 
     return SSL_SUCCESS;
 }
@@ -477,6 +460,13 @@ int CyaSSL_dtls_set_peer(CYASSL* ssl, void* peer, unsigned int peerSz)
         XMEMCPY(sa, peer, peerSz);
         ssl->buffers.dtlsCtx.peer.sa = sa;
         ssl->buffers.dtlsCtx.peer.sz = peerSz;
+#ifdef CYASSL_MPDTLS
+//we need connected socket everywhere
+//once we know the peer, we connect
+        if (connect(ssl->buffers.dtlsCtx.fd, (struct sockaddr*) peer, peerSz) != 0) {
+            CYASSL_MSG("ERROR : connect failed set peer");
+        }  
+#endif
         return SSL_SUCCESS;
     }
     return SSL_FAILURE;

@@ -1963,6 +1963,7 @@ void MpdtlsSocksInit(CYASSL* ssl, MPDTLS_SOCKS** socks) {
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
     (*socks)->nbrSocks = 0;
     (*socks)->nextReadRound = 0;
+    (*socks)->nextWriteRound = 0;
     (*socks)->socks = NULL;
 }
 
@@ -2031,6 +2032,7 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 * Return 0 if it's not found, -1 if error occured
 */
 int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
+    CYASSL_ENTER("Is sock present ?");
     MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
     struct sockaddr comp1, comp2;
     socklen_t sz1 = sizeof(struct sockaddr);
@@ -2049,10 +2051,14 @@ int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr 
                     +sockAddrEqualAddr(addrPeer, &comp2) + sockAddrEqualPort(addrPeer, &comp2);
         if (ret < 0)
             return -1;
-        if (ret == 4)
+        if (ret == 4){
+            CYASSL_LEAVE("Is sock present ?",1);
             return 1;
+        }
     }
+    CYASSL_LEAVE("Is sock present ?",0);
     return 0;
+
 }
 
 /**
@@ -2062,6 +2068,7 @@ int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr 
 * Returns 0 if everything went fine, -1 otherwise
 */
 int mpdtlsSyncSock(CYASSL* ssl) {
+    CYASSL_ENTER("Sync Sock");
     MPDTLS_ADDRS *mah = ssl->mpdtls_host;
     MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
     struct sockaddr *hostaddr, *peeraddr;
@@ -2070,7 +2077,8 @@ int mpdtlsSyncSock(CYASSL* ssl) {
         hostaddr = (struct sockaddr *) (mah->addrs + i);
         for (j = 0; j < mar->nbrAddrs; j++) {
             peeraddr = (struct sockaddr *) (mar->addrs + j);
-            if (mpdtlsIsSockPresent(ssl, hostaddr, peeraddr)==0) {
+            if (hostaddr->sa_family == peeraddr->sa_family
+             && mpdtlsIsSockPresent(ssl, hostaddr, peeraddr)==0) {
                 int sock, ret;
                 ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
                 switch(ret) {
@@ -2100,6 +2108,7 @@ int mpdtlsSyncSock(CYASSL* ssl) {
 * Return -3 if it cannot connect
 */
 int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peeraddr) {
+    CYASSL_ENTER("Add new fd");
 
     socklen_t sz = sizeof(struct sockaddr);
     int sd;
@@ -2126,6 +2135,7 @@ int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peer
     }
 
     *result = sd;
+    CYASSL_LEAVE("Add new sock",sd);
     return 0;
 }
 
@@ -2653,6 +2663,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
 
         // REMEMBER THE SOCK
+        close(sock);
 
         int ret = -1;
         if (family == AF_INET) {
@@ -2661,7 +2672,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
             ret = ((struct sockaddr_in6 *) &so)->sin6_port;
         }
 
-        CYASSL_LEAVE("GetFreePortNumber", ret);
+        CYASSL_LEAVE("GetFreePortNumber", ntohs(ret));
         return ret;
     }
 
@@ -3121,6 +3132,20 @@ int SendBuffered(CYASSL* ssl)
     }
 
     while (ssl->buffers.outputBuffer.length > 0) {
+#ifdef CYASSL_MPDTLS
+        if (ssl->options.mpdtls && ssl->options.connectState==SECOND_REPLY_DONE && ssl->mpdtls_remote->nbrAddrs > 1) {
+            /*we use only connected sockets */
+            ssl->buffers.dtlsCtx.peer.sa = NULL;
+            ssl->buffers.dtlsCtx.peer.sz = 0;
+
+            MPDTLS_SOCKS *scks = ssl->mpdtls_socks;
+            if(scks->nextWriteRound == scks->nbrSocks)
+                scks->nextWriteRound = 0;
+
+            ssl->buffers.dtlsCtx.fd = scks->socks[scks->nextWriteRound];
+            scks->nextWriteRound++;
+        }
+#endif        
         int sent = ssl->ctx->CBIOSend(ssl,
                                       (char*)ssl->buffers.outputBuffer.buffer +
                                       ssl->buffers.outputBuffer.idx,
@@ -6256,6 +6281,8 @@ static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
         CYASSL_MSG(namebuf);
     }
 #endif
+
+    mpdtlsSyncSock(ssl);
     
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
@@ -9581,31 +9608,6 @@ static void PickHashSigAlgo(CYASSL* ssl,
                     case HELLO_EXT_MP_DTLS:
                         CYASSL_MSG("Extension MPDTLS received");
                         ssl->options.mpdtls = input[i+offset];
-
-                        if (ssl->options.mpdtls == 1) {
-                            word16 addr_count;
-                            MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
-
-                            ato16(input + i + offset + HELLO_EXT_MP_DTLS_LEN, &addr_count);
-
-                            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs, sizeof(struct sockaddr_storage) * (addr_count + ma->nbrAddrs),
-                                                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
-                            XMEMCPY(ma->addrs + ma->nbrAddrs,
-                                    input + i + offset + HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN,
-                                    sizeof(struct sockaddr_storage) * addr_count);
-                            ma->nbrAddrs += addr_count;
-#ifdef DEBUG_CYASSL
-                            int j;
-                            char namebuf[BUFSIZ];
-                            CYASSL_MSG("Remote IPs");
-                            for (j = 0; j < ma->nbrAddrs; j++) {
-                                /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
-                                getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
-                                    namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
-                                CYASSL_MSG(namebuf);
-                            }
-#endif
-                        }
                         break;
 #endif
                     default:
@@ -11021,8 +11023,7 @@ int DoSessionTicket(CYASSL* ssl,
 
 #ifdef CYASSL_MPDTLS
         if (ssl->options.dtls & ssl->options.mpdtls)
-            totalExtSz += HELLO_EXT_MP_DTLS_SZ + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                        + (sizeof(struct sockaddr_storage) * ssl->mpdtls_host->nbrAddrs);
+            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
 #endif
         if (totalExtSz > 0)
             length += totalExtSz + OPAQUE16_LEN;
@@ -11103,20 +11104,11 @@ int DoSessionTicket(CYASSL* ssl,
             if (ssl->options.dtls & ssl->options.mpdtls) {
                 c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
                 idx += 2;
-                word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN + HELLO_EXT_MP_DTLS_ADDR_LEN 
-                                         + (sizeof(struct sockaddr_storage) * ssl->mpdtls_host->nbrAddrs);
+                word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN;
                 c16toa(mpdtls_ext_length, output + idx); //we put the size of the data
                 idx += 2;
                 output[idx] = 0x01; //the flag is ON since we support mpdtls
                 idx += 1;
-
-                int nbrAddrs = ssl->mpdtls_host->nbrAddrs;
-                c16toa(nbrAddrs, output+idx); //we indicate the number of addrs we want to transmit
-                idx += HELLO_EXT_MP_DTLS_ADDR_LEN;
-                XMEMCPY(output + idx, ssl->mpdtls_host->addrs,
-                            sizeof(struct sockaddr_storage) * nbrAddrs);
-
-                idx+= sizeof(struct sockaddr_storage) * nbrAddrs;
             }
 #endif
         }

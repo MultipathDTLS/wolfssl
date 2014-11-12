@@ -1155,7 +1155,8 @@ void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr);
 typedef struct MPDTLS_SOCKS {
     int*            socks;              /* Contains all the available sockets for MPDTLS */
     int             nbrSocks;           /* Number of available sockets */
-    int             nextReadRound;      /* Contains the number of the next sockets (round robin schedule) */
+    int             nextReadRound;      /* Contains the number of the next sockets for read (round robin schedule) */
+    int             nextWriteRound;      /* Contains the number of the next sockets for write (round robin schedule) */
 } MPDTLS_SOCKS;
 
 
