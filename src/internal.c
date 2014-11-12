@@ -1973,6 +1973,160 @@ void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** socks) {
     XFREE(*socks, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     *socks = NULL;
 }
+
+
+/*
+* based sock_addr_cmp_addr - compare addresses for equality 
+* source : opensource.apple.com
+* return 1 if they are equal, 0 if different , -1 if error 
+*/
+
+int sockAddrEqualAddr(const struct sockaddr * sa,
+                       const struct sockaddr * sb)
+{
+    if (sa->sa_family != sb->sa_family)
+        return 0;
+
+    /*
+     * With IPv6 address structures, assume a non-hostile implementation that
+     * stores the address as a contiguous sequence of bits. Any holes in the
+     * sequence would invalidate the use of memcmp().
+     */
+    if (sa->sa_family == AF_INET) {
+        return ( ((struct sockaddr_in*) sa)->sin_addr.s_addr == ((struct sockaddr_in*) sb)->sin_addr.s_addr);
+    } else if (sa->sa_family == AF_INET6) {
+        return (XMEMCMP((char *) &(((struct sockaddr_in6*)sa)->sin6_addr.s6_addr),
+               (char *) &(((struct sockaddr_in6*)sb)->sin6_addr.s6_addr),
+               sizeof(struct in6_addr))==0);
+    } else {
+        CYASSL_MESSAGE("sockAddrEqualAddr: unsupported address family");
+        return -1;
+    }
+}
+
+/* Adapted from sock_addr_cmp_port - compare ports for equality
+* source : opensource.apple.com
+*
+* return 1 if they have the same port, 0 otherwise, -1 in case of error
+*/
+
+int sockAddrEqualPort(const struct sockaddr * sa,
+                       const struct sockaddr * sb)
+{
+    if (sa->sa_family != sb->sa_family)
+        return 0;
+
+    if (sa->sa_family == AF_INET) {
+         return ( ((struct sockaddr_in*) sa)->sin_port == ((struct sockaddr_in*) sb)->sin_port);
+    } else if (sa->sa_family == AF_INET6) {
+        return ( ((struct sockaddr_in6*) sa)->sin6_port == ((struct sockaddr_in6*) sb)->sin6_port);
+    } else {
+        CYASSL_MESSAGE("sockAddrEqualPort: unsupported address family");
+        return -1;
+    }
+}
+
+/**
+* Test if one of the socket is bind to addrHost and connected to addrPeer
+* Return 0 if it's not found, -1 if error occured
+*/
+int mpdtlsIsFdPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
+    MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
+    struct sockaddr comp1, comp2;
+    int i;
+    for (i = 0; i < ms->nbrSocks; i++) {
+        if (getsockname(ms->socks[i], &comp1, sizeof(comp1)) != 0) {
+            CYASSL_MSG("ERROR ON getsockname");
+            return -1;
+        }
+        if (getpeername(ms->socks[i], &comp2, sizeof(comp2)) != 0) {
+            CYASSL_MSG("ERROR ON getpeername");
+            return -1;
+        }
+        int ret = sockAddrEqualAddr(addrHost, &comp1) + sockAddrEqualPort(addrHost, &comp1)
+                    +sockAddrEqualAddr(addrPeer, &comp2) + sockAddrEqualPort(addrPeer, &comp2);
+        if (ret < 0)
+            return -1;
+        if (ret == 4)
+            return 1;
+    }
+    return 0;
+}
+
+/**
+* SyncFd : synchronize our host and remote address with our list of open socket
+* Will alter host and remote if it finds uncorrect addresses
+*
+* Returns 0 if everything went fine, -1 otherwise
+*/
+int mpdtlsSyncFd(CYASSL* ssl) {
+    MPDTLS_ADDRS *mah = ssl->mpdtls_host;
+    MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
+    struct sockaddr comp;
+    sockaddr* hostaddr, peeraddr;
+    int i,j;
+    for (i = 0; i < mah->nbrAddrs; i++) {
+        hostaddr = (sockaddr *) mah->addrs[i];
+        for (j = 0; j < mar->nbrAddrs; j++) {
+            peeraddr = (sockaddr *) mar->addrs[j];
+            if (mpdtlsIsFdPresent(ssl, hostaddr, peeraddr)==0) {
+                int sock, ret;
+                ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
+                switch(ret) {
+                    case 0:
+                        CyaSSL_mpdtls_add_fd(ssl, sock);
+                    break; 
+                    case -1:
+                        return -1;
+                    break;
+                    case  -2:
+                        CyaSSL_mpdtls_del_addr_index(ssl, i);
+                        i--;
+                    break;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+/**
+* create a UDP socket
+* bind it to hostaddr
+* connect it to peeraddr 
+* Return -1 if it cannot create a socket
+* Return -2 if it cannot bind
+* Return -3 if it cannot connect
+*/
+int mpdtlsAddNewFd(int *result, sockaddr* hostaddr, sockaddr* peeraddr) {
+
+    socklen_t sz = sizeof(struct sockaddr);
+    int sd;
+
+    if((sd=socket(hostaddr->sa_family,SOCK_DGRAM,0))<0) {
+        CYASSL_MSG("Error opening socket");
+        return -1;
+    }
+
+    // set SO_REUSEADDR on a socket to true (1):
+    int optval = 1;
+    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    //bind server socket to INADDR_ANY
+    if (bind(sd, hostaddr, sz) < 0) {
+        CYASSL_MSG("ERROR on binding");
+        return -2;
+    }
+
+    if (connect(sd, peeraddr, sz)) != 0) {
+        CYASSL_MSG("ERROR udp connect failed");
+        return -3;
+    }
+
+    *result = fd;
+    return 0;
+}
+
 #endif
 
 

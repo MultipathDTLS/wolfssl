@@ -1161,6 +1161,11 @@ typedef struct MPDTLS_SOCKS {
 
 void MpdtlsSocksInit(CYASSL* ssl, MPDTLS_SOCKS** addr);
 void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** addr);
+
+
+int sockAddrEqualAddr(const struct sockaddr * sa, const struct sockaddr * sb);
+int sockAddrEqualPort(const struct sockaddr * sa, const struct sockaddr * sb);
+int mpdtlsIsFdPresent(CYASSL* ssl, struct sockaddr *addr, struct sockaddr*);
 #endif
 
 /* CyaSSL Certificate Manager */

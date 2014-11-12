@@ -316,12 +316,14 @@ CYASSL_API int  CyaSSL_dtls_set_timeout_max(CYASSL* ssl, int);
 CYASSL_API int  CyaSSL_dtls_got_timeout(CYASSL* ssl);
 CYASSL_API int  CyaSSL_dtls(CYASSL* ssl);
 
+#ifdef CYASSL_MPDTLS
 /*  MPDTLS functions    */
 CYASSL_API int  CyaSSL_mpdtls(CYASSL* ssl);
 CYASSL_API int  CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char*);
 CYASSL_API int  CyaSSL_mpdtls_add_fd(CYASSL* ssl, int fd);
 CYASSL_API int  CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *addr);
-CYASSL_API int  CyaSSL_mpdtls_del_addr_index(CYASSL* ssl, int); 
+CYASSL_API int  CyaSSL_mpdtls_del_addr_index(CYASSL* ssl, int);
+#endif 
 
 CYASSL_API int  CyaSSL_dtls_set_peer(CYASSL*, void*, unsigned int);
 CYASSL_API int  CyaSSL_dtls_get_peer(CYASSL*, void*, unsigned int*);
