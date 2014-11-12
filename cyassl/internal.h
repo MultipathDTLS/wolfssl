@@ -2200,7 +2200,7 @@ enum ContentType {
     alert              = 21, 
     handshake          = 22, 
     application_data   = 23,
-    change_interface   = 24         /* MPDTLS addition */
+    change_interface   = 25         /* MPDTLS addition */
 };
 
 
@@ -2240,9 +2240,8 @@ enum HandShakeType {
 
 /* MPDTLS change interface header */
 typedef struct MPDtlsChangeInterfaceHeader {
-    byte            mode;
-    byte            inet_family;
-    word16          nbrAddrs;          
+    byte                        mode;
+    byte                        nbrAddrs;
 } MPDtlsChangeInterfaceHeader;
 
 
@@ -2263,7 +2262,7 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 CYASSL_LOCAL int SendChangeCipher(CYASSL*);
 CYASSL_LOCAL int SendData(CYASSL*, const void*, int);
-CYASSL_LOCAL int SendChangeInterface(CYASSL*, const void*, int);
+CYASSL_LOCAL int SendChangeInterface(CYASSL*, struct sockaddr_storage*, int, int);
 CYASSL_LOCAL int SendPacket(CYASSL*, const void*, int, int);
 CYASSL_LOCAL int SendCertificate(CYASSL*);
 CYASSL_LOCAL int SendCertificateRequest(CYASSL*);
@@ -2338,6 +2337,10 @@ CYASSL_LOCAL  int GrowInputBuffer(CYASSL* ssl, int size, int usedLength);
                                                 byte, word32, word32, void*);
     CYASSL_LOCAL DtlsMsg* DtlsMsgInsert(DtlsMsg*, DtlsMsg*);
 #endif /* CYASSL_DTLS */
+
+#ifdef CYASSL_MPDTLS
+    CYASSL_LOCAL int GetFreePortNumber(int, const struct sockaddr*);
+#endif /* CYASSL_LOCAL */
 
 #ifndef NO_TLS
     

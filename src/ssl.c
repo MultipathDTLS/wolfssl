@@ -355,6 +355,13 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
         return PARSE_ADDR_E;
     } else {
         while (res) {
+            // Get a free port to bind to
+            struct sockaddr_storage *addr = (struct sockaddr_storage *) res->ai_addr;
+            if (addr->ss_family == AF_INET) {
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(AF_INET, res->ai_addr);
+            } else if (addr->ss_family == AF_INET6) {
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(AF_INET6, res->ai_addr);
+            }
             
             ma->nbrAddrs++;
             ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
@@ -364,12 +371,16 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
             /* We add one new address at the end of the existing ones */
 
             XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
-                res->ai_addr, res->ai_addrlen);
-            
+                    addr, res->ai_addrlen);
+
             /* go to next address */
             res = res->ai_next;
         }
     }
+
+    // Need something clean here (ack or smtg)
+    SendChangeInterface(ssl, ma->addrs, ma->nbrAddrs, mpdtls_abs);
+
     return SSL_SUCCESS;
 }
 
