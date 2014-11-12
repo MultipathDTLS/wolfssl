@@ -1165,7 +1165,9 @@ void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** addr);
 
 int sockAddrEqualAddr(const struct sockaddr * sa, const struct sockaddr * sb);
 int sockAddrEqualPort(const struct sockaddr * sa, const struct sockaddr * sb);
-int mpdtlsIsFdPresent(CYASSL* ssl, struct sockaddr *addr, struct sockaddr*);
+int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addr, struct sockaddr*);
+int mpdtlsSyncSock(CYASSL* ssl);
+int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peeraddr);
 #endif
 
 /* CyaSSL Certificate Manager */

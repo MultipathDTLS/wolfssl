@@ -1999,7 +1999,7 @@ int sockAddrEqualAddr(const struct sockaddr * sa,
                (char *) &(((struct sockaddr_in6*)sb)->sin6_addr.s6_addr),
                sizeof(struct in6_addr))==0);
     } else {
-        CYASSL_MESSAGE("sockAddrEqualAddr: unsupported address family");
+        CYASSL_MSG("sockAddrEqualAddr: unsupported address family");
         return -1;
     }
 }
@@ -2021,7 +2021,7 @@ int sockAddrEqualPort(const struct sockaddr * sa,
     } else if (sa->sa_family == AF_INET6) {
         return ( ((struct sockaddr_in6*) sa)->sin6_port == ((struct sockaddr_in6*) sb)->sin6_port);
     } else {
-        CYASSL_MESSAGE("sockAddrEqualPort: unsupported address family");
+        CYASSL_MSG("sockAddrEqualPort: unsupported address family");
         return -1;
     }
 }
@@ -2030,16 +2030,18 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 * Test if one of the socket is bind to addrHost and connected to addrPeer
 * Return 0 if it's not found, -1 if error occured
 */
-int mpdtlsIsFdPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
+int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
     MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
     struct sockaddr comp1, comp2;
+    socklen_t sz1 = sizeof(struct sockaddr);
+    socklen_t sz2 = sizeof(struct sockaddr);
     int i;
     for (i = 0; i < ms->nbrSocks; i++) {
-        if (getsockname(ms->socks[i], &comp1, sizeof(comp1)) != 0) {
+        if (getsockname(ms->socks[i], &comp1, &sz1) != 0) {
             CYASSL_MSG("ERROR ON getsockname");
             return -1;
         }
-        if (getpeername(ms->socks[i], &comp2, sizeof(comp2)) != 0) {
+        if (getpeername(ms->socks[i], &comp2, &sz2) != 0) {
             CYASSL_MSG("ERROR ON getpeername");
             return -1;
         }
@@ -2059,17 +2061,16 @@ int mpdtlsIsFdPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *a
 *
 * Returns 0 if everything went fine, -1 otherwise
 */
-int mpdtlsSyncFd(CYASSL* ssl) {
+int mpdtlsSyncSock(CYASSL* ssl) {
     MPDTLS_ADDRS *mah = ssl->mpdtls_host;
     MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
-    struct sockaddr comp;
-    sockaddr* hostaddr, peeraddr;
+    struct sockaddr *hostaddr, *peeraddr;
     int i,j;
     for (i = 0; i < mah->nbrAddrs; i++) {
-        hostaddr = (sockaddr *) mah->addrs[i];
+        hostaddr = (struct sockaddr *) (mah->addrs + i);
         for (j = 0; j < mar->nbrAddrs; j++) {
-            peeraddr = (sockaddr *) mar->addrs[j];
-            if (mpdtlsIsFdPresent(ssl, hostaddr, peeraddr)==0) {
+            peeraddr = (struct sockaddr *) (mar->addrs + j);
+            if (mpdtlsIsSockPresent(ssl, hostaddr, peeraddr)==0) {
                 int sock, ret;
                 ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
                 switch(ret) {
@@ -2098,7 +2099,7 @@ int mpdtlsSyncFd(CYASSL* ssl) {
 * Return -2 if it cannot bind
 * Return -3 if it cannot connect
 */
-int mpdtlsAddNewFd(int *result, sockaddr* hostaddr, sockaddr* peeraddr) {
+int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peeraddr) {
 
     socklen_t sz = sizeof(struct sockaddr);
     int sd;
@@ -2118,12 +2119,13 @@ int mpdtlsAddNewFd(int *result, sockaddr* hostaddr, sockaddr* peeraddr) {
         return -2;
     }
 
-    if (connect(sd, peeraddr, sz)) != 0) {
+    if (connect(sd, peeraddr, sz) != 0) {
         CYASSL_MSG("ERROR udp connect failed");
+        close(sd);
         return -3;
     }
 
-    *result = fd;
+    *result = sd;
     return 0;
 }
 
