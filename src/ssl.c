@@ -222,11 +222,12 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
     #endif
 
     #ifdef CYASSL_MPDTLS
-        CyaSSL_mpdtls_add_fd(ssl,fd);
-
         struct sockaddr cl;
         socklen_t sz = sizeof(struct sockaddr);
         socklen_t sz2 = sizeof(struct sockaddr);
+
+        CyaSSL_mpdtls_add_fd(ssl,fd);
+
         if (getpeername(fd, &cl, &sz) == 0) {
             MPDTLS_ADDRS *ma = ssl->mpdtls_remote;
             ma->nbrAddrs++;
@@ -456,6 +457,12 @@ void CyaSSL_set_using_nonblock(CYASSL* ssl, int nonblock)
 int CyaSSL_dtls_set_peer(CYASSL* ssl, void* peer, unsigned int peerSz)
 {
 #ifdef CYASSL_DTLS
+#ifdef CYASSL_MPDTLS
+    if (connect(CyaSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) != 0) {
+        CYASSL_MSG("Error on connect");
+    }
+
+#endif /* CYASSL_MPDTLS */
     void* sa = (void*)XMALLOC(peerSz, ssl->heap, DYNAMIC_TYPE_SOCKADDR);
     if (sa != NULL) {
         XMEMCPY(sa, peer, peerSz);
