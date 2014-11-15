@@ -2203,7 +2203,7 @@ enum ContentType {
     alert              = 21, 
     handshake          = 22, 
     application_data   = 23,
-    change_interface   = 25         /* MPDTLS addition */
+    change_interface   = 42         /* MPDTLS addition */
 };
 
 
