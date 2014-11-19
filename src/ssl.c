@@ -314,6 +314,44 @@ int CyaSSL_mpdtls(CYASSL* ssl)
 #ifdef CYASSL_MPDTLS
 int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
 {
+    int error, n;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        CYASSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        for (n = 0; res; res = res->ai_next) {
+            // Get a free port to bind to
+            struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
+            if (addr->sa_family == AF_INET) {
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr);
+            } else if (addr->sa_family == AF_INET6) {
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr);
+            }
+
+            if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == 0) {
+                n++; // Count the number of addresses we add
+            }
+        }
+    }
+
+    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+    SendChangeInterface(ssl, (struct sockaddr *) ma->addrs + (ma->nbrAddrs - 1 - n), n, mpdtls_add);
+
+    mpdtlsSyncSock(ssl);
+
+    return SSL_SUCCESS;
+}
+
+int CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *name)
+{
     int error;
     struct addrinfo *res;
     struct addrinfo hints;
@@ -328,48 +366,17 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
         return PARSE_ADDR_E;
     } else {
         while (res) {
-            // Get a free port to bind to
-            struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
-            if (addr->sa_family == AF_INET) {
-                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr);
-            } else if (addr->sa_family == AF_INET6) {
-                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr);
+            if (DeleteAddr(ssl, ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
+                SendChangeInterface(ssl, res->ai_addr, 1, mpdtls_del);
             }
 
-            InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen);
-
             /* go to next address */
             res = res->ai_next;
         }
     }
-
-    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-    // Need something clean here (ack or smtg)
-    SendChangeInterface(ssl, (struct sockaddr_storage *) ma->addrs + (ma->nbrAddrs - 1), 1, mpdtls_add);
 
     mpdtlsSyncSock(ssl);
-
-    return SSL_SUCCESS;
-}
-
-int CyaSSL_mpdtls_del_addr(CYASSL* ssl, const char *name)
-{
-    int error;
-    struct addrinfo *res;
-
-    /* getaddrinfo() case.  It can handle multiple addresses. */
-    error = getaddrinfo(name, NULL, NULL, &res);
-    if (error) {
-        CYASSL_MSG(gai_strerror(error));
-        return PARSE_ADDR_E;
-    } else {
-        while (res) {
-            DeleteAddr(ssl, ssl->mpdtls_host, res->ai_addr, res->ai_addrlen);
-                
-            /* go to next address */
-            res = res->ai_next;
-        }
-    }
+    
     return SSL_SUCCESS;
 }
 
