@@ -242,16 +242,25 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
         }
         
         if (getsockname(fd, &cl, &sz2) == 0) {
-            MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-            ma->nbrAddrs++;
-            ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
-                                          sizeof(struct sockaddr_storage) * ma->nbrAddrs,
-                                          ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+            //we discard non connected socket
+            int valid = 1;
+            if(cl.sa_family == AF_INET){
+                valid = ((struct sockaddr_in*) &cl)->sin_port;
+            }else if(cl.sa_family == AF_INET6){
+                valid = ((struct sockaddr_in6*) &cl)->sin6_port;
+            }
+            if(valid) {
+                MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+                ma->nbrAddrs++;
+                ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                              sizeof(struct sockaddr_storage) * ma->nbrAddrs,
+                                              ssl->heap, DYNAMIC_TYPE_SOCKADDR);
 
-            /* We add one new address at the end of the existing ones */
+                /* We add one new address at the end of the existing ones */
 
-            XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
-                    &cl, sz2);
+                XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+                        &cl, sz2);
+            }
         }
 
     #endif
@@ -458,9 +467,46 @@ int CyaSSL_dtls_set_peer(CYASSL* ssl, void* peer, unsigned int peerSz)
 {
 #ifdef CYASSL_DTLS
 #ifdef CYASSL_MPDTLS
-    if (connect(CyaSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) != 0) {
-        CYASSL_MSG("Error on connect");
+    struct sockaddr host;
+    bzero(&host, sizeof(struct sockaddr));
+    host.sa_family = AF_UNSPEC;
+    int optval = 1;
+    setsockopt(CyaSSL_get_fd(ssl), SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    if (bind(CyaSSL_get_fd(ssl), &host, sizeof(struct sockaddr)) == 0) {
+        if (connect(CyaSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) == 0) {
+            socklen_t sz = sizeof(host);
+
+            if (getsockname(CyaSSL_get_fd(ssl), &host, &sz) == 0) {
+                MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+                ma->nbrAddrs++;
+                ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                              sizeof(struct sockaddr_storage) * ma->nbrAddrs,
+                                              ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+
+                /* We add one new address at the end of the existing ones */
+
+                XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+                        &host, sz);
+            }
+
+
+        } else {
+            CYASSL_MSG("Error on connect in set peer");
+        }
+    } else {
+        CYASSL_MSG("Error on bind in set peer");
     }
+
+    MPDTLS_ADDRS *ma = ssl->mpdtls_remote;
+    ma->nbrAddrs++;
+    ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
+                                           sizeof(struct sockaddr_storage) * ma->nbrAddrs,
+                                           SSL->heap, DYNAMIC_TYPE_SOCKADDR);
+
+    /* We add one new address at the end of the existing ones */
+    XMEMCPY(ma->addrs + (ma->nbrAddrs - 1),
+            peer, peerSz);
 
 #endif /* CYASSL_MPDTLS */
     void* sa = (void*)XMALLOC(peerSz, ssl->heap, DYNAMIC_TYPE_SOCKADDR);

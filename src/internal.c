@@ -3133,7 +3133,7 @@ int SendBuffered(CYASSL* ssl)
 
     while (ssl->buffers.outputBuffer.length > 0) {
 #ifdef CYASSL_MPDTLS
-        if (ssl->options.mpdtls && ssl->options.connectState==SECOND_REPLY_DONE && ssl->mpdtls_remote->nbrAddrs > 1) {
+        if (ssl->options.mpdtls && ssl->options.connectState==SECOND_REPLY_DONE && ssl->mpdtls_remote->nbrAddrs > 0) {
             /*we use only connected sockets */
             ssl->buffers.dtlsCtx.peer.sa = NULL;
             ssl->buffers.dtlsCtx.peer.sz = 0;
