@@ -2248,6 +2248,13 @@ typedef struct MPDtlsChangeInterfaceHeader {
     byte                        nbrAddrs;
 } MPDtlsChangeInterfaceHeader;
 
+/* MPDTLS change interface header */
+typedef struct MPDtlsChangeInterfaceAddress {
+    u_int16_t              inetFamily;
+    byte                   address[16];
+    u_int16_t              portNumber;
+} MPDtlsChangeInterfaceAddress;
+
 
 enum ChangeInterfaceMode {
     mpdtls_add      = 10,
@@ -2265,7 +2272,7 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 CYASSL_LOCAL int SendChangeCipher(CYASSL*);
 CYASSL_LOCAL int SendData(CYASSL*, const void*, int);
-CYASSL_LOCAL int SendChangeInterface(CYASSL*, struct sockaddr_storage*, int, int);
+CYASSL_LOCAL int SendChangeInterface(CYASSL*, const struct sockaddr*, int, int);
 CYASSL_LOCAL int SendPacket(CYASSL*, const void*, int, int);
 CYASSL_LOCAL int SendCertificate(CYASSL*);
 CYASSL_LOCAL int SendCertificateRequest(CYASSL*);

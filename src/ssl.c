@@ -336,17 +336,17 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
                 ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr);
             }
 
-            if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == 0) {
+            if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {
                 n++; // Count the number of addresses we add
             }
         }
     }
 
-    MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-    SendChangeInterface(ssl, (struct sockaddr *) ma->addrs + (ma->nbrAddrs - 1 - n), n, mpdtls_add);
-
-    mpdtlsSyncSock(ssl);
-
+    if( n > 0) {
+        MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+        SendChangeInterface(ssl, (struct sockaddr *) (ma->addrs + (ma->nbrAddrs - n)), n, mpdtls_add);
+        mpdtlsSyncSock(ssl);
+    }
     return SSL_SUCCESS;
 }
 
