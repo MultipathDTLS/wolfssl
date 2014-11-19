@@ -2079,6 +2079,7 @@ struct CYASSL {
     MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
     MPDTLS_SOCKS*   mpdtls_socks;       /* available sockets */
+    MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
 #endif
 #endif
 #ifdef CYASSL_CALLBACKS
@@ -2341,7 +2342,13 @@ CYASSL_LOCAL  int GrowInputBuffer(CYASSL* ssl, int size, int usedLength);
 #endif /* CYASSL_DTLS */
 
 #ifdef CYASSL_MPDTLS
-    CYASSL_LOCAL int GetFreePortNumber(int, const struct sockaddr*);
+    CYASSL_LOCAL int  InsertSock(CYASSL* ssl, MPDTLS_SOCKS*, int);
+    CYASSL_LOCAL int  DeleteSock(CYASSL* ssl, MPDTLS_SOCKS*, int);
+    CYASSL_LOCAL int  DeleteSockbyIndex(CYASSL* ssl, MPDTLS_SOCKS*, int);
+    CYASSL_LOCAL int  InsertAddr(CYASSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    CYASSL_LOCAL int  DeleteAddr(CYASSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    CYASSL_LOCAL int  DeleteAddrbyIndex(CYASSL* ssl, MPDTLS_ADDRS*, int);
+    CYASSL_LOCAL int  GetFreePortNumber(CYASSL* ssl, int, const struct sockaddr*);
 #endif /* CYASSL_LOCAL */
 
 #ifndef NO_TLS

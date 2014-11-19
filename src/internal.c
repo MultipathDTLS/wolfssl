@@ -1908,6 +1908,7 @@ int InitSSL(CYASSL* ssl, CYASSL_CTX* ctx)
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_socks));
+    MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
 #endif /* end MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -2074,7 +2075,8 @@ int mpdtlsSyncSock(CYASSL* ssl) {
     MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
     struct sockaddr *hostaddr, *peeraddr;
     int i,j;
-    int *finalSockTable = malloc(sizeof(int) * (mah->nbrAddrs*mar->nbrAddrs)); //maximum possible size
+    int *finalSockTable = (int *) XMALLOC(sizeof(int) * (mah->nbrAddrs*mar->nbrAddrs), //maximum possible size
+                                ssl->heap, DYNAMIC_TYPE_SOCKADDR);
     int socknum = 0;
     for (i = 0; i < mah->nbrAddrs; i++) {
         hostaddr = (struct sockaddr *) (mah->addrs + i);
@@ -2088,7 +2090,7 @@ int mpdtlsSyncSock(CYASSL* ssl) {
                 ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
                 switch(ret) {
                     case 0:
-                        CyaSSL_mpdtls_add_fd(ssl, sock);
+                        //InsertSock(ssl, ssl->mpdtls_socks, sock); // Seems not needed anymore
                         finalSockTable[socknum] = sock;
                         socknum++;
                     break; 
@@ -2096,7 +2098,7 @@ int mpdtlsSyncSock(CYASSL* ssl) {
                         return -1;
                     break;
                     case  -2:
-                        CyaSSL_mpdtls_del_addr_index(ssl, i);
+                        DeleteAddrbyIndex(ssl, mah, i);
                         i--;
                     break;
                 }
@@ -2191,6 +2193,7 @@ void SSL_ResourceFree(CYASSL* ssl)
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_socks));
+    MpdtlsSocksFree(ssl, &(ssl->mpdtls_pool));
 #endif
 
 #ifndef NO_CERTS
@@ -2671,7 +2674,124 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
 #endif /* CYASSL_DTLS */
 
 #ifdef CYASSL_MPDTLS
-    int GetFreePortNumber(int family, const struct sockaddr *sa)
+    int InsertSock(CYASSL* ssl, MPDTLS_SOCKS* socks, int sock) {
+        (void)ssl;
+        
+        socks->nbrSocks++;
+        socks->socks = (int*) XREALLOC(socks->socks,
+                                sizeof(int) * socks->nbrSocks,
+                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+        /* We add one new socket at the end of the existing ones */
+        socks->socks[socks->nbrSocks - 1] = sock;
+
+        return SSL_SUCCESS;
+    }
+
+    int DeleteSock(CYASSL* ssl, MPDTLS_SOCKS* socks, int sock) {
+        (void)ssl;
+        int index, found = 0;
+
+        for (index = 0; index < socks->nbrSocks; index++) {
+            if (socks->socks[index] == sock) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (found == 1) {
+            return DeleteSockbyIndex(ssl, socks, index);
+        }
+
+        return NOT_FOUND_E;
+    }
+
+    int DeleteSockbyIndex(CYASSL* ssl, MPDTLS_SOCKS* socks, int index) {
+        (void)ssl;
+        
+        if (socks->nbrSocks > index && index >= 0) {
+            socks->nbrSocks--;
+
+            if (index != socks->nbrSocks) {
+                /*
+                 * If the index is the last index of the array, we don't need to move anything.
+                 * Else, move all the addresses after the removed index one cell backward.
+                 */
+                XMEMMOVE(socks->socks + index,
+                         socks->socks + index + 1,
+                         sizeof(int) * (socks->nbrSocks - index));
+            }
+
+            socks->socks = (int*) XREALLOC(socks->socks,
+                                  sizeof(int) * socks->nbrSocks,
+                                  ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+            return SSL_SUCCESS;
+        } else {
+            return BUFFER_E;
+        }
+    }    
+
+    int InsertAddr(CYASSL* ssl, MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+        (void)ssl;
+        
+        addrs->nbrAddrs++;
+        addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
+                                      sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
+                                      ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+        /* We add one new address at the end of the existing ones */
+
+        XMEMCPY(addrs->addrs + (addrs->nbrAddrs - 1),
+                addr, addrSz);
+
+        return SSL_SUCCESS;
+    }
+    
+    int DeleteAddr(CYASSL* ssl, MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+        int index, found = 0;
+
+        for (index = 0; index < addrs->nbrAddrs; index++) {
+            if (memcmp(addr, &(addrs->addrs[index]), addrSz) == 0) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (found == 1) {
+            return DeleteAddrbyIndex(ssl, addrs, index);
+        }
+
+        return NOT_FOUND_E;
+    }
+
+    int DeleteAddrbyIndex(CYASSL* ssl, MPDTLS_ADDRS* addrs, int index) {
+        (void)ssl;
+
+        if (addrs->nbrAddrs > index && index >= 0) {
+            addrs->nbrAddrs--;
+
+            if (index != addrs->nbrAddrs) {
+                /*
+                 * If the index is the last index of the array, we don't need to move anything.
+                 * Else, move all the addresses after the removed index one cell backward.
+                 */
+                XMEMMOVE(addrs->addrs + index,
+                         addrs->addrs + index + 1,
+                         sizeof(struct sockaddr_storage) * (addrs->nbrAddrs - index));
+            }
+
+            addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
+                                                      sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
+                                                      ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+            return SSL_SUCCESS;
+        } else {
+            return BUFFER_E;
+        }
+    }
+
+    int GetFreePortNumber(CYASSL* ssl, int family, const struct sockaddr *sa)
     {
         CYASSL_ENTER("GetFreePortNumber");
 
@@ -2680,6 +2800,9 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
             CYASSL_ERROR(sock);
             return sock;
         }
+
+        int optval = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
         if (bind(sock, sa, sizeof(*sa)) < 0) {
             CYASSL_ERROR(-1);
@@ -2696,7 +2819,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
 
         // REMEMBER THE SOCK
-        close(sock);
+        InsertSock(ssl, ssl->mpdtls_pool, sock);
 
         int ret = -1;
         if (family == AF_INET) {
@@ -6285,13 +6408,14 @@ static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
     
     switch(cih->mode) {
         case mpdtls_add:
-
+            // TO CLEAN
             ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
                             sizeof(struct sockaddr_storage) * (cih->nbrAddrs + ma->nbrAddrs),
                             ssl->heap, DYNAMIC_TYPE_MPDTLS);
             XMEMCPY(ma->addrs + ma->nbrAddrs, data,
                     sizeof(struct sockaddr_storage) * cih->nbrAddrs);
             ma->nbrAddrs += cih->nbrAddrs;
+            //InsertAddr(ssl, ssl->mpdtls_remote, data, sizeof(struct sockaddr_storage) * cih->nbrAddrs)
             break;
 
         case mpdtls_del:

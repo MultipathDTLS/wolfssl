@@ -131,7 +131,7 @@ enum {
     LENGTH_ONLY_E       = -202,  /* Returning output length only */
 
     PARSE_ADDR_E        = -203,  /* Address not parsable */
-    NOT_FOUND_ADDR_E    = -204,  /* Address not found */
+    NOT_FOUND_E         = -204,  /* Address not found */
 
     MIN_CODE_E          = -300   /* errors -101 - -299 */
 };
