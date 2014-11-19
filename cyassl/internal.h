@@ -1148,8 +1148,8 @@ typedef struct MPDTLS_ADDRS {
 } MPDTLS_ADDRS;
 
 
-void MpdtlsAddrsInit(CYASSL* ssl, MPDTLS_ADDRS** addr);
-void MpdtlsAddrsFree(CYASSL* ssl, MPDTLS_ADDRS** addr);
+void MpdtlsAddrsInit(CYASSL*, MPDTLS_ADDRS**);
+void MpdtlsAddrsFree(CYASSL*, MPDTLS_ADDRS**);
 
 
 typedef struct MPDTLS_SOCKS {
@@ -1160,15 +1160,15 @@ typedef struct MPDTLS_SOCKS {
 } MPDTLS_SOCKS;
 
 
-void MpdtlsSocksInit(CYASSL* ssl, MPDTLS_SOCKS** addr);
-void MpdtlsSocksFree(CYASSL* ssl, MPDTLS_SOCKS** addr);
+void MpdtlsSocksInit(CYASSL*, MPDTLS_SOCKS**);
+void MpdtlsSocksFree(CYASSL*, MPDTLS_SOCKS**);
 
 
-int sockAddrEqualAddr(const struct sockaddr * sa, const struct sockaddr * sb);
-int sockAddrEqualPort(const struct sockaddr * sa, const struct sockaddr * sb);
-int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addr, struct sockaddr*);
-int mpdtlsSyncSock(CYASSL* ssl);
-int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peeraddr);
+int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
+int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
+int mpdtlsIsSockPresent(CYASSL*, const struct sockaddr*, const struct sockaddr*);
+int mpdtlsSyncSock(CYASSL*);
+int mpdtlsAddNewSock(CYASSL*, const struct sockaddr*, const struct sockaddr*, int*);
 #endif
 
 /* CyaSSL Certificate Manager */
@@ -2265,7 +2265,7 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 CYASSL_LOCAL int SendChangeCipher(CYASSL*);
 CYASSL_LOCAL int SendData(CYASSL*, const void*, int);
-CYASSL_LOCAL int SendChangeInterface(CYASSL*, struct sockaddr_storage*, int, int);
+CYASSL_LOCAL int SendChangeInterface(CYASSL*, struct sockaddr*, int, int);
 CYASSL_LOCAL int SendPacket(CYASSL*, const void*, int, int);
 CYASSL_LOCAL int SendCertificate(CYASSL*);
 CYASSL_LOCAL int SendCertificateRequest(CYASSL*);
