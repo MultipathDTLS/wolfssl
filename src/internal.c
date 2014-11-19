@@ -2033,7 +2033,7 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 * Return 0 if it's not found, -1 if error occured
 * return socket fd if it's present
 */
-int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
+int mpdtlsIsSockPresent(CYASSL* ssl, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
     CYASSL_ENTER("Is sock present ?");
     MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
     struct sockaddr comp1, comp2;
@@ -2049,8 +2049,10 @@ int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr 
             CYASSL_MSG("ERROR ON getpeername");
             return -1;
         }
-        int ret = sockAddrEqualAddr(addrHost, &comp1) + sockAddrEqualPort(addrHost, &comp1)
-                    +sockAddrEqualAddr(addrPeer, &comp2) + sockAddrEqualPort(addrPeer, &comp2);
+        int ret = sockAddrEqualAddr(addrHost, &comp1)
+                + sockAddrEqualPort(addrHost, &comp1)
+                + sockAddrEqualAddr(addrPeer, &comp2)
+                + sockAddrEqualPort(addrPeer, &comp2);
         if (ret < 0)
             return -1;
         if (ret == 4){
@@ -2087,20 +2089,19 @@ int mpdtlsSyncSock(CYASSL* ssl) {
             if (hostaddr->sa_family == peeraddr->sa_family
              && presentSock == 0) {
                 int sock, ret;
-                ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
+                ret = mpdtlsAddNewSock(ssl, hostaddr, peeraddr, &sock);
                 switch(ret) {
                     case 0:
                         //InsertSock(ssl, ssl->mpdtls_socks, sock); // Seems not needed anymore
                         finalSockTable[socknum] = sock;
                         socknum++;
-                    break; 
+                        break; 
                     case -1:
                         return -1;
-                    break;
                     case  -2:
                         DeleteAddrbyIndex(ssl, mah, i);
                         i--;
-                    break;
+                        break;
                 }
             } else if (presentSock > 0) {
                 finalSockTable[socknum] = presentSock;
@@ -2142,25 +2143,44 @@ int mpdtlsSyncSock(CYASSL* ssl) {
 * Return -2 if it cannot bind
 * Return -3 if it cannot connect
 */
-int mpdtlsAddNewFd(int *result, struct sockaddr* hostaddr, struct sockaddr* peeraddr) {
-    CYASSL_ENTER("Add new fd");
+int mpdtlsAddNewSock(CYASSL *ssl, const struct sockaddr* hostaddr, const struct sockaddr* peeraddr, int *result) {
+    CYASSL_ENTER("Add new sock");
 
     socklen_t sz = sizeof(struct sockaddr);
-    int sd;
+    int i, sd = -1;
 
-    if((sd=socket(hostaddr->sa_family,SOCK_DGRAM,0))<0) {
-        CYASSL_MSG("Error opening socket");
-        return -1;
+    MPDTLS_SOCKS *pool = ssl->mpdtls_pool;
+    for (i = 0; i < pool->nbrSocks; i++) {
+        struct sockaddr h;
+        socklen_t hSz = sizeof(struct sockaddr);
+
+        if (getsockname(pool->socks[i], &h, &hSz) == 0) {
+            if (sockAddrEqualAddr(&h, hostaddr) > 0
+             && sockAddrEqualPort(&h, hostaddr) > 0) {
+                CYASSL_MSG("Using a socket from the pool !");
+                sd = pool->socks[i];
+                DeleteSockbyIndex(ssl, pool, i);
+                break;
+            }
+        }
     }
 
-    // set SO_REUSEADDR on a socket to true (1):
-    int optval = 1;
-    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    /* If no socket are available in the pool, creates a new one */
+    if (sd == -1) {
+        if((sd=socket(hostaddr->sa_family,SOCK_DGRAM,0))<0) {
+            CYASSL_MSG("Error opening socket");
+            return -1;
+        }
 
-    //bind server socket to INADDR_ANY
-    if (bind(sd, hostaddr, sz) < 0) {
-        CYASSL_MSG("ERROR on binding");
-        return -2;
+        // set SO_REUSEADDR on a socket to true (1):
+        int optval = 1;
+        setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+        //bind server socket to INADDR_ANY
+        if (bind(sd, hostaddr, sz) < 0) {
+            CYASSL_MSG("ERROR on binding");
+            return -2;
+        }
     }
 
     if (connect(sd, peeraddr, sz) != 0) {
