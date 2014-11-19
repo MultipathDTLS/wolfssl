@@ -2030,6 +2030,7 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 /**
 * Test if one of the socket is bind to addrHost and connected to addrPeer
 * Return 0 if it's not found, -1 if error occured
+* return socket fd if it's present
 */
 int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr *addrPeer) {
     CYASSL_ENTER("Is sock present ?");
@@ -2053,7 +2054,7 @@ int mpdtlsIsSockPresent(CYASSL* ssl, struct sockaddr *addrHost, struct sockaddr 
             return -1;
         if (ret == 4){
             CYASSL_LEAVE("Is sock present ?",1);
-            return 1;
+            return ms->socks[i];
         }
     }
     CYASSL_LEAVE("Is sock present ?",0);
@@ -2073,17 +2074,23 @@ int mpdtlsSyncSock(CYASSL* ssl) {
     MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
     struct sockaddr *hostaddr, *peeraddr;
     int i,j;
+    int *finalSockTable = malloc(sizeof(int) * (mah->nbrAddrs*mar->nbrAddrs)); //maximum possible size
+    int socknum = 0;
     for (i = 0; i < mah->nbrAddrs; i++) {
         hostaddr = (struct sockaddr *) (mah->addrs + i);
         for (j = 0; j < mar->nbrAddrs; j++) {
             peeraddr = (struct sockaddr *) (mar->addrs + j);
+            int presentSock = mpdtlsIsSockPresent(ssl, hostaddr, peeraddr);
+
             if (hostaddr->sa_family == peeraddr->sa_family
-             && mpdtlsIsSockPresent(ssl, hostaddr, peeraddr)==0) {
+             && presentSock == 0) {
                 int sock, ret;
                 ret = mpdtlsAddNewFd(&sock, hostaddr, peeraddr);
                 switch(ret) {
                     case 0:
                         CyaSSL_mpdtls_add_fd(ssl, sock);
+                        finalSockTable[socknum] = sock;
+                        socknum++;
                     break; 
                     case -1:
                         return -1;
@@ -2093,9 +2100,35 @@ int mpdtlsSyncSock(CYASSL* ssl) {
                         i--;
                     break;
                 }
+            } else if (presentSock > 0) {
+                finalSockTable[socknum] = presentSock;
+                socknum++;
             }
         }
     }
+
+    //clear existing sockets
+    MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
+    for (i = 0; i < ms->nbrSocks; i++) {
+        int found = 0;
+        for (j = 0; j < socknum; j++) {
+            if (finalSockTable[j] == ms->socks[i]){
+                found = 1;
+                break;
+            }
+        }
+        if (found == 0) {
+            //we close the socket if it's not present anymore
+            close(ms->socks[i]);
+        }
+
+    }
+
+    //we replace the list of sockets
+    free(ms->socks);
+    ms->socks = finalSockTable;
+    ms->nbrSocks = socknum;
+
     return 0;
 }
 
@@ -6251,10 +6284,6 @@ static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
     MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
     
     switch(cih->mode) {
-        case mpdtls_abs:
-            ma->nbrAddrs = 0;
-            /* No break here, we want to execute the same code as for add after this line */
-
         case mpdtls_add:
 
             ma->addrs = (struct sockaddr_storage*) XREALLOC(ma->addrs,
@@ -6266,7 +6295,8 @@ static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
             break;
 
         case mpdtls_del:
-            // TODO !!
+                //TO DO
+            break;
         default:
             break;
     }

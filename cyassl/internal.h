@@ -2250,7 +2250,6 @@ typedef struct MPDtlsChangeInterfaceHeader {
 
 enum ChangeInterfaceMode {
     mpdtls_add      = 10,
-    mpdtls_abs      = 11,           /* Absolute */
     mpdtls_del      = 20            /* Delete */
 };
 
