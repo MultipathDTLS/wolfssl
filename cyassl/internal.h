@@ -2355,7 +2355,7 @@ CYASSL_LOCAL  int GrowInputBuffer(CYASSL* ssl, int size, int usedLength);
     CYASSL_LOCAL int  InsertAddr(CYASSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
     CYASSL_LOCAL int  DeleteAddr(CYASSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
     CYASSL_LOCAL int  DeleteAddrbyIndex(CYASSL* ssl, MPDTLS_ADDRS*, int);
-    CYASSL_LOCAL int  GetFreePortNumber(CYASSL* ssl, int, const struct sockaddr*);
+    CYASSL_LOCAL int  GetFreePortNumber(CYASSL* ssl, int, const struct sockaddr*, socklen_t);
 #endif /* CYASSL_LOCAL */
 
 #ifndef NO_TLS

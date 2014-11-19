@@ -331,9 +331,9 @@ int CyaSSL_mpdtls_new_addr(CYASSL* ssl, const char *name)
             // Get a free port to bind to
             struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
             if (addr->sa_family == AF_INET) {
-                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr);
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr, res->ai_addrlen);
             } else if (addr->sa_family == AF_INET6) {
-                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr);
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr, res->ai_addrlen);
             }
 
             if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {

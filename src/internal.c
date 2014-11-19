@@ -2146,8 +2146,14 @@ int mpdtlsSyncSock(CYASSL* ssl) {
 int mpdtlsAddNewSock(CYASSL *ssl, const struct sockaddr* hostaddr, const struct sockaddr* peeraddr, int *result) {
     CYASSL_ENTER("Add new sock");
 
-    socklen_t sz = sizeof(struct sockaddr);
+    socklen_t sz = 0;
     int i, sd = -1;
+
+    if (hostaddr->sa_family == AF_INET) {
+        sz = sizeof(struct sockaddr_in);
+    } else if (hostaddr->sa_family == AF_INET6) {
+        sz = sizeof(struct sockaddr_in6);
+    }
 
     MPDTLS_SOCKS *pool = ssl->mpdtls_pool;
     for (i = 0; i < pool->nbrSocks; i++) {
@@ -2811,7 +2817,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }
 
-    int GetFreePortNumber(CYASSL* ssl, int family, const struct sockaddr *sa)
+    int GetFreePortNumber(CYASSL* ssl, int family, const struct sockaddr *sa, socklen_t saSz)
     {
         CYASSL_ENTER("GetFreePortNumber");
 
@@ -2824,7 +2830,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         int optval = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
-        if (bind(sock, sa, sizeof(*sa)) < 0) {
+        if (bind(sock, sa, saSz) < 0) {
             CYASSL_ERROR(-1);
             return -1;
         }
@@ -6437,13 +6443,13 @@ static int DoChangeInterface(CYASSL* ssl, byte* input, word32* inOutIdx)
                     u_int32_t addrTemp;
                     ato32(changeAddr->address, &addrTemp);
                     addr.sin_addr.s_addr = htonl(addrTemp); 
-                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr));
+                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
                 } else {
                     struct sockaddr_in6 addr;
                     addr.sin6_family = AF_INET6;
                     addr.sin6_port = ntohs(changeAddr->portNumber);
                     XMEMCPY(addr.sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
-                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr));
+                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
                 }
             }
             break;
