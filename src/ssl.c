@@ -222,26 +222,26 @@ int CyaSSL_set_fd(CYASSL* ssl, int fd)
     #endif
 
     #ifdef CYASSL_MPDTLS
-        struct sockaddr cl;
-        socklen_t sz = sizeof(struct sockaddr);
-        socklen_t sz2 = sizeof(struct sockaddr);
+        struct sockaddr_storage cl;
+        socklen_t sz = sizeof(struct sockaddr_storage);
+        socklen_t sz2 = sizeof(struct sockaddr_storage);
 
         InsertSock(ssl, ssl->mpdtls_socks, fd);
 
-        if (getpeername(fd, &cl, &sz) == 0) {
-            InsertAddr(ssl, ssl->mpdtls_remote, &cl, sz);
+        if (getpeername(fd, (struct sockaddr *) &cl, &sz) == 0) {
+            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl, sz);
         }
         
-        if (getsockname(fd, &cl, &sz2) == 0) {
+        if (getsockname(fd, (struct sockaddr *) &cl, &sz2) == 0) {
             //we discard non connected socket
             int valid = 1;
-            if(cl.sa_family == AF_INET){
+            if(cl.ss_family == AF_INET){
                 valid = ((struct sockaddr_in*) &cl)->sin_port;
-            }else if(cl.sa_family == AF_INET6){
+            }else if(cl.ss_family == AF_INET6){
                 valid = ((struct sockaddr_in6*) &cl)->sin6_port;
             }
             if(valid) {
-                InsertAddr(ssl, ssl->mpdtls_host, &cl, sz2);
+                InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl, sz2);
             }
         }
 
@@ -405,18 +405,31 @@ int CyaSSL_dtls_set_peer(CYASSL* ssl, void* peer, unsigned int peerSz)
 {
 #ifdef CYASSL_DTLS
 #ifdef CYASSL_MPDTLS
-    struct sockaddr host;
-    bzero(&host, sizeof(struct sockaddr));
-    host.sa_family = AF_UNSPEC;
+    struct sockaddr* host;
+    socklen_t hostSz = peerSz;
+    //we consider the host to be the same family as the peer it tries to connect to
+    if (((struct sockaddr *) peer)->sa_family==AF_INET) {
+        struct sockaddr_in hostaddr;
+        bzero(&hostaddr, sizeof(struct sockaddr_in));
+        hostaddr.sin_family = AF_INET;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in);
+    }else{
+        struct sockaddr_in6 hostaddr;
+        bzero(&hostaddr, sizeof(struct sockaddr_in6));
+        hostaddr.sin6_family = AF_INET6;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in6);
+    }
+    
     int optval = 1;
     setsockopt(CyaSSL_get_fd(ssl), SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
-    if (bind(CyaSSL_get_fd(ssl), &host, sizeof(struct sockaddr)) == 0) {
+    if (bind(CyaSSL_get_fd(ssl), host, hostSz) == 0) {
         if (connect(CyaSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) == 0) {
             
-            socklen_t hostSz = sizeof(host);
-            if (getsockname(CyaSSL_get_fd(ssl), &host, &hostSz) == 0) {
-                InsertAddr(ssl, ssl->mpdtls_host, &host, hostSz);
+            if (getsockname(CyaSSL_get_fd(ssl), host, &hostSz) == 0) {
+                InsertAddr(ssl, ssl->mpdtls_host, host, hostSz);
             }
         } else {
             CYASSL_MSG("Error on connect in set peer");
