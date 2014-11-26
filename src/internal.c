@@ -1993,12 +1993,13 @@ int sockAddrEqualAddr(const struct sockaddr * sa,
      * With IPv6 address structures, assume a non-hostile implementation that
      * stores the address as a contiguous sequence of bits. Any holes in the
      * sequence would invalidate the use of memcmp().
+     *XMEMCMP((char *) &(((struct sockaddr_in6*)sa)->sin6_addr.s6_addr),(char *) &(((struct sockaddr_in6*)sb)->sin6_addr.s6_addr),sizeof(struct in6_addr)
      */
     if (sa->sa_family == AF_INET) {
         return ( ((struct sockaddr_in*) sa)->sin_addr.s_addr == ((struct sockaddr_in*) sb)->sin_addr.s_addr);
     } else if (sa->sa_family == AF_INET6) {
-        return (XMEMCMP((char *) &(((struct sockaddr_in6*)sa)->sin6_addr.s6_addr),
-               (char *) &(((struct sockaddr_in6*)sb)->sin6_addr.s6_addr),
+        return (XMEMCMP((char *) &(((struct sockaddr_in6*)sa)->sin6_addr),
+               (char *) &(((struct sockaddr_in6*)sb)->sin6_addr),
                sizeof(struct in6_addr))==0);
     } else {
         CYASSL_MSG("sockAddrEqualAddr: unsupported address family");
@@ -2036,23 +2037,23 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 int mpdtlsIsSockPresent(CYASSL* ssl, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
     CYASSL_ENTER("Is sock present ?");
     MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
-    struct sockaddr comp1, comp2;
-    socklen_t sz1 = sizeof(struct sockaddr);
-    socklen_t sz2 = sizeof(struct sockaddr);
+    struct sockaddr_storage comp1, comp2;
+    socklen_t sz1 = sizeof(struct sockaddr_storage);
+    socklen_t sz2 = sizeof(struct sockaddr_storage);
     int i;
     for (i = 0; i < ms->nbrSocks; i++) {
-        if (getsockname(ms->socks[i], &comp1, &sz1) != 0) {
+        if (getsockname(ms->socks[i], (struct sockaddr*) &comp1, &sz1) != 0) {
             CYASSL_MSG("ERROR ON getsockname");
             return -1;
         }
-        if (getpeername(ms->socks[i], &comp2, &sz2) != 0) {
+        if (getpeername(ms->socks[i], (struct sockaddr*) &comp2, &sz2) != 0) {
             CYASSL_MSG("ERROR ON getpeername");
             return -1;
         }
-        int ret = sockAddrEqualAddr(addrHost, &comp1)
-                + sockAddrEqualPort(addrHost, &comp1)
-                + sockAddrEqualAddr(addrPeer, &comp2)
-                + sockAddrEqualPort(addrPeer, &comp2);
+        int ret = sockAddrEqualAddr(addrHost, (struct sockaddr*) &comp1)
+                + sockAddrEqualPort(addrHost, (struct sockaddr*) &comp1)
+                + sockAddrEqualAddr(addrPeer, (struct sockaddr*) &comp2)
+                + sockAddrEqualPort(addrPeer, (struct sockaddr*) &comp2);
         if (ret < 0)
             return -1;
         if (ret == 4){
