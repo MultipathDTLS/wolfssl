@@ -223,7 +223,7 @@ static INLINE void c16toa(word16 u16, byte* c)
 
 
 #if !defined(NO_OLD_TLS) || defined(HAVE_CHACHA) || defined(HAVE_AESCCM) \
-    || defined(HAVE_AESGCM)
+    || defined(HAVE_AESGCM) || defined(WOLFSSL_MPDTLS)
 /* convert 32 bit integer to opaque */
 static INLINE void c32toa(word32 u32, byte* c)
 {
@@ -6629,7 +6629,6 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
         getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
             namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
         WOLFSSL_MSG(namebuf);
-        namebuf = NULL;
     }
 #endif /* DEBUG_WOLFSSL */
 
@@ -7964,7 +7963,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct sockaddr *addrs, int addr_cou
         //we do not want to transmit part of the memory
         bzero(changeAddr.address, sizeof(changeAddr.address));
         if (addrs[i].sa_family == AF_INET) {
-            c32toa(htonl(((struct sockaddr_in *) addrs + i)->sin_addr.s_addr), changeAddr.address);
+              c32toa(htonl(((struct sockaddr_in *) addrs + i)->sin_addr.s_addr), changeAddr.address);
             changeAddr.portNumber = htons(((struct sockaddr_in *) addrs + i)->sin_port);
         } else {
             XMEMCPY(changeAddr.address,
@@ -10051,7 +10050,6 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
                 if (offset + size > totalExtSz)
                     return BUFFER_ERROR;
 
-                    return ret;
                 switch (type) {
 #ifdef WOLFSSL_MPDTLS
                     case HELLO_EXT_MP_DTLS:

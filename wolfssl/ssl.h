@@ -339,11 +339,11 @@ WOLFSSL_API int  wolfSSL_dtls_set_peer(WOLFSSL*, void*, unsigned int);
 WOLFSSL_API int  wolfSSL_dtls_get_peer(WOLFSSL*, void*, unsigned int*);
 
 /*  MPDTLS functions    */
-WOLFSSL_API int  wolfSSL_mpdtls(CYASSL* ssl);
-WOLFSSL_API int  wolfSSL_mpdtls_new_addr(CYASSL* ssl, const char*);
-WOLFSSL_API int  wolfSSL_mpdtls_del_addr(CYASSL* ssl, const char *);
-WOLFSSL_API int  wolfSSL_mpdtls_add_fd(CYASSL* ssl, int);
-WOLFSSL_API int  wolfSSL_mpdtls_del_fd(CYASSL* ssl, int);
+WOLFSSL_API int  wolfSSL_mpdtls(WOLFSSL* ssl);
+WOLFSSL_API int  wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char*);
+WOLFSSL_API int  wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *);
+WOLFSSL_API int  wolfSSL_mpdtls_add_fd(WOLFSSL* ssl, int);
+WOLFSSL_API int  wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int);
 
 WOLFSSL_API int   wolfSSL_ERR_GET_REASON(int err);
 WOLFSSL_API char* wolfSSL_ERR_error_string(unsigned long,char*);

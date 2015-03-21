@@ -1829,6 +1829,7 @@ typedef struct Options {
     word16            tls:1;              /* using TLS ? */
     word16            tls1_1:1;           /* using TLSv1.1+ ? */
     word16            dtls:1;             /* using datagrams ? */
+    word16            mpdtls:1;             /* using datagrams ? */
     word16            connReset:1;        /* has the peer reset */
     word16            isClosed:1;         /* if we consider conn closed */
     word16            closeNotify:1;      /* we've recieved a close notify */
@@ -2340,6 +2341,8 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 WOLFSSL_LOCAL int SendChangeCipher(WOLFSSL*);
 WOLFSSL_LOCAL int SendData(WOLFSSL*, const void*, int);
+WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const struct sockaddr*, int, int);
+WOLFSSL_LOCAL int SendPacket(WOLFSSL*, const void*, int, int);
 WOLFSSL_LOCAL int SendCertificate(WOLFSSL*);
 WOLFSSL_LOCAL int SendCertificateRequest(WOLFSSL*);
 WOLFSSL_LOCAL int SendServerKeyExchange(WOLFSSL*);
