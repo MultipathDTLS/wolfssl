@@ -1032,6 +1032,19 @@ WOLFSSL_API int wolfSSL_set_SessionTicket_cb(WOLFSSL* ssl,
 }
 #endif
 
+#ifdef WOLFSSL_MPDTLS
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseMultiPathDTLS(WOLFSSL* ssl, byte enabled)
+{
+    if (ssl == NULL || (enabled != 0x00 && enabled != 0x01))
+        return BAD_FUNC_ARG;
+
+    return TLSX_UseMultiPathDTLS(&ssl->extensions, enabled);
+}
+#endif
+#endif /* WOLFSSL_MPDTLS */
+
 #ifndef WOLFSSL_LEANPSK
 
 int wolfSSL_send(WOLFSSL* ssl, const void* data, int sz, int flags)
@@ -5217,9 +5230,6 @@ int wolfSSL_dtls_got_timeout(WOLFSSL* ssl)
         #ifdef WOLFSSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
-        #ifdef WOLFSSL_MPDTLS
-                ssl->options.mpdtls = 1;
-        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 
@@ -5517,7 +5527,7 @@ int wolfSSL_dtls_got_timeout(WOLFSSL* ssl)
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
         #ifdef WOLFSSL_MPDTLS
-                ssl->options.mpdtls = 1;
+                ssl->options.mpdtls = 1; /* Servers compiled with MPDTLS always support it */
         #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;

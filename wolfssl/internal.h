@@ -674,7 +674,6 @@ enum Misc {
     NO_COMPRESSION  =  0,
     ZLIB_COMPRESSION = 221,     /* wolfSSL zlib compression */
     HELLO_EXT_SIG_ALGO = 13,    /* ID for the sig_algo hello extension */
-    HELLO_EXT_MP_DTLS = 42,     /* ID for the MPDTLS extension */
     SECRET_LEN      = 48,       /* pre RSA and all master */
     ENCRYPT_LEN     = 512,      /* allow 4096 bit static buffer */
     SIZEOF_SENDER   =  4,       /* clnt or srvr           */
@@ -1308,7 +1307,8 @@ typedef enum {
     TRUNCATED_HMAC         = 0x0004,
     ELLIPTIC_CURVES        = 0x000a,
     SESSION_TICKET         = 0x0023,
-    SECURE_RENEGOTIATION   = 0xff01
+    SECURE_RENEGOTIATION   = 0xff01,
+    MULTIPATH_DTLS         = 0x0042
 } TLSX_Type;
 
 typedef struct TLSX {
@@ -1340,7 +1340,8 @@ WOLFSSL_LOCAL int    TLSX_Parse(WOLFSSL* ssl, byte* input, word16 length,
    || defined(HAVE_TRUNCATED_HMAC)       \
    || defined(HAVE_SUPPORTED_CURVES)     \
    || defined(HAVE_SECURE_RENEGOTIATION) \
-   || defined(HAVE_SESSION_TICKET)
+   || defined(HAVE_SESSION_TICKET)       \
+   || defined(WOLFSSL_MPDTLS)
 
 #error Using TLS extensions requires HAVE_TLS_EXTENSIONS to be defined.
 
@@ -1443,6 +1444,10 @@ WOLFSSL_LOCAL SessionTicket* TLSX_SessionTicket_Create(word32 lifetime,
                                                        byte* data, word16 size);
 WOLFSSL_LOCAL void TLSX_SessionTicket_Free(SessionTicket* ticket);
 #endif /* HAVE_SESSION_TICKET */
+
+#ifdef WOLFSSL_MPDTLS
+WOLFSSL_LOCAL int TLSX_UseMultiPathDTLS(TLSX** extensions, byte enabled);
+#endif
 
 /* wolfSSL context type */
 struct WOLFSSL_CTX {
@@ -1829,7 +1834,7 @@ typedef struct Options {
     word16            tls:1;              /* using TLS ? */
     word16            tls1_1:1;           /* using TLSv1.1+ ? */
     word16            dtls:1;             /* using datagrams ? */
-    word16            mpdtls:1;             /* using datagrams ? */
+    word16            mpdtls:1;           /* using multipath-dtls ? */
     word16            connReset:1;        /* has the peer reset */
     word16            isClosed:1;         /* if we consider conn closed */
     word16            closeNotify:1;      /* we've recieved a close notify */

@@ -8551,6 +8551,9 @@ const char* wolfSSL_ERR_reason_error_string(unsigned long e)
     case DUPLICATE_MSG_E:
         return "Duplicate HandShake message Error";
 
+    case UNKNOWN_MPDTLS_VAL_E:
+        return "MultiPath DTLS extension value Error";
+
     default :
         return "unknown error number";
     }
@@ -9622,8 +9625,8 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
     int SendClientHello(WOLFSSL* ssl)
     {
         byte              *output;
-        word32             length, totalExtSz = 0, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
-        int                sendSz = 0;
+        word32             length, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
+        int                sendSz;
         int                idSz = ssl->options.resuming
                                 ? ssl->session.sessionIDSz
                                 : 0;
@@ -9655,30 +9658,22 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
                + COMP_LEN + ENUM_LEN;
 
 #ifdef HAVE_TLS_EXTENSIONS
-        totalExtSz += TLSX_GetRequestSize(ssl);
+        length += TLSX_GetRequestSize(ssl);
 #else
         if (IsAtLeastTLSv1_2(ssl) && ssl->suites->hashSigAlgoSz) {
-            totalExtSz += ssl->suites->hashSigAlgoSz + HELLO_EXT_SZ;
+            length += ssl->suites->hashSigAlgoSz + HELLO_EXT_SZ;
         }
 #endif
-        sendSz  = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
+        sendSz = length + HANDSHAKE_HEADER_SZ + RECORD_HEADER_SZ;
 
 #ifdef WOLFSSL_DTLS
         if (ssl->options.dtls) {
             length += ENUM_LEN;   /* cookie */
             if (ssl->arrays->cookieSz != 0) length += ssl->arrays->cookieSz;
-#ifdef WOLFSSL_MPDTLS
-            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
-#endif
-            sendSz  = length + DTLS_HANDSHAKE_HEADER_SZ + DTLS_RECORD_HEADER_SZ + totalExtSz;
+            sendSz  = length + DTLS_HANDSHAKE_HEADER_SZ + DTLS_RECORD_HEADER_SZ;
             idx    += DTLS_HANDSHAKE_EXTRA + DTLS_RECORD_EXTRA;
         }
 #endif
-
-        /* No more extensions to add */
-        length += totalExtSz;
-        /* Need to remove the first field (contains the total size of the extensions) */
-        totalExtSz -= OPAQUE16_LEN;
 
         if (ssl->keys.encryptionOn)
             sendSz += MAX_MSG_EXTRA;
@@ -9747,10 +9742,6 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
         else
             output[idx++] = NO_COMPRESSION;
 
-        /* Write the total length of the extensions */
-        c16toa(totalExtSz, output + idx);
-        idx += 2;
-
 #ifdef HAVE_TLS_EXTENSIONS
         idx += TLSX_WriteRequest(ssl, output + idx);
 
@@ -9759,6 +9750,9 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
         if (IsAtLeastTLSv1_2(ssl) && ssl->suites->hashSigAlgoSz)
         {
             int i;
+            /* add in the extensions length */
+            c16toa(HELLO_EXT_LEN + ssl->suites->hashSigAlgoSz, output + idx);
+            idx += 2;
 
             c16toa(HELLO_EXT_SIG_ALGO, output + idx);
             idx += 2;
@@ -9770,16 +9764,6 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
                 output[idx] = ssl->suites->hashSigAlgo[i];
             }
         }
-#endif
-
-#ifdef WOLFSSL_MPDTLS
-        /*Set the extension MPDTLS flag to 1, just in case the server is compatible */
-        c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
-        idx += 2;
-        c16toa(HELLO_EXT_MP_DTLS_LEN, output + idx); //we put the size of the data
-        idx += 2;
-        output[idx] = 0x01; //the flag is on since we support mpdtls
-        idx += 1;
 #endif
 
         if (ssl->keys.encryptionOn) {
@@ -10012,62 +9996,30 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
 
         /* tls extensions */
         if ( (i - begin) < helloSz) {
-            word16 totalExtSz;
-            if ((i - begin) + OPAQUE16_LEN > helloSz)
-                return BUFFER_ERROR;
-
-            ato16(&input[i], &totalExtSz);
-            i += OPAQUE16_LEN;
-
-            if ((i - begin) + totalExtSz > helloSz)
-                return BUFFER_ERROR;
 #ifdef HAVE_TLS_EXTENSIONS
             if (TLSX_SupportExtensions(ssl)) {
                 int    ret = 0;
+                word16 totalExtSz;
+
+                if ((i - begin) + OPAQUE16_LEN > helloSz)
+                    return BUFFER_ERROR;
+
+                ato16(&input[i], &totalExtSz);
+                i += OPAQUE16_LEN;
+
+                if ((i - begin) + totalExtSz > helloSz)
+                    return BUFFER_ERROR;
 
                 if ((ret = TLSX_Parse(ssl, (byte *) input + i,
-                                                     totalExtSz, 0, NULL)))
+                                                          totalExtSz, 0, NULL)))
                     return ret;
-
-
-            }
-#endif
-            /** We check for other extensions */
-            word16 offset = 0;
-
-            while (offset < totalExtSz) {
-                word16 type;
-                word16 size;
-
-                if (totalExtSz - offset < HELLO_EXT_TYPE_SZ + OPAQUE16_LEN)
-                    return BUFFER_ERROR;
-                ato16(input + i + offset, &type);
-                offset += HELLO_EXT_TYPE_SZ;
-
-                ato16(input + i + offset, &size);
-                offset += OPAQUE16_LEN;
-
-                if (offset + size > totalExtSz)
-                    return BUFFER_ERROR;
-
-                switch (type) {
-#ifdef WOLFSSL_MPDTLS
-                    case HELLO_EXT_MP_DTLS:
-                        WOLFSSL_MSG("Extension MPDTLS received");
-                        ssl->options.mpdtls = input[i+offset];
-                        break;
-#endif
-                    default:
-                        /* Ignore unknown extensions */
-                        break;
-                }
-
-                /* offset should be updated here! */
-                offset += size;
-            }
 
                 i += totalExtSz;
                 *inOutIdx = i;
+            }
+            else
+#endif
+                *inOutIdx = begin + helloSz; /* skip extensions */
         }
 
         ssl->options.serverState = SERVER_HELLO_COMPLETE;
@@ -11778,7 +11730,6 @@ int DoSessionTicket(WOLFSSL* ssl,
     {
         byte              *output;
         word32             length, idx = RECORD_HEADER_SZ + HANDSHAKE_HEADER_SZ;
-        word16             totalExtSz = 0;
         int                sendSz;
         int                ret;
 
@@ -11788,15 +11739,8 @@ int DoSessionTicket(WOLFSSL* ssl,
                + ENUM_LEN;
 
 #ifdef HAVE_TLS_EXTENSIONS
-        totalExtSz += TLSX_GetResponseSize(ssl);
+        length += TLSX_GetResponseSize(ssl);
 #endif
-
-#ifdef WOLFSSL_MPDTLS
-        if (ssl->options.dtls & ssl->options.mpdtls)
-            totalExtSz += HELLO_EXT_MP_DTLS_SZ;
-#endif
-        if (totalExtSz > 0)
-            length += totalExtSz + OPAQUE16_LEN;
 
         /* check for avalaible size */
         if ((ret = CheckAvailableSize(ssl, MAX_HELLO_SZ)) != 0)
@@ -11863,26 +11807,9 @@ int DoSessionTicket(WOLFSSL* ssl,
             output[idx++] = NO_COMPRESSION;
 
             /* last, extensions */
-        if (totalExtSz > 0) {
-            c16toa(totalExtSz, output + idx); /* extensions length */
-            idx += OPAQUE16_LEN;
-
 #ifdef HAVE_TLS_EXTENSIONS
-            idx += TLSX_WriteResponse(ssl, output + idx);
+        TLSX_WriteResponse(ssl, output + idx);
 #endif
-
-#ifdef WOLFSSL_MPDTLS
-            if (ssl->options.dtls & ssl->options.mpdtls) {
-                c16toa(HELLO_EXT_MP_DTLS, output + idx); //we put the correct ID
-                idx += 2;
-                word16 mpdtls_ext_length = HELLO_EXT_MP_DTLS_LEN;
-                c16toa(mpdtls_ext_length, output + idx); //we put the size of the data
-                idx += 2;
-                output[idx] = 0x01; //the flag is ON since we support mpdtls
-                idx += 1;
-            }
-#endif
-        }
 
         ssl->buffers.outputBuffer.length += sendSz;
         #ifdef WOLFSSL_DTLS
@@ -13516,34 +13443,6 @@ int DoSessionTicket(WOLFSSL* ssl,
                                                      totalExtSz, 1, &clSuites)))
                     return ret;
 
-#ifdef WOLFSSL_MPDTLS
-                word16 tExtSz = totalExtSz;
-                word32 inc = i;
-
-                while (tExtSz) {
-                    word16 extId, extSz;
-
-                    if (OPAQUE16_LEN + OPAQUE16_LEN > tExtSz)
-                        return BUFFER_ERROR;
-                   
-                    ato16(&input[inc], &extId);
-                    inc += OPAQUE16_LEN;
-                    ato16(&input[inc], &extSz);
-                    inc += OPAQUE16_LEN;
-
-                    if (OPAQUE16_LEN + OPAQUE16_LEN + extSz > tExtSz)
-                        return BUFFER_ERROR;
-
-                    if (extId == HELLO_EXT_MP_DTLS) {
-                        /* Read the extension content, set the MPDTLS byte in consequence */
-                        ssl->options.mpdtls = input[inc];
-                    }
-
-                    inc += extSz;
-                    tExtSz -= OPAQUE16_LEN + OPAQUE16_LEN + extSz;
-                }
-#endif
-
                 i += totalExtSz;
 #else
                 while (totalExtSz) {
@@ -13573,15 +13472,6 @@ int DoSessionTicket(WOLFSSL* ssl,
 
                         if (clSuites.hashSigAlgoSz > HELLO_EXT_SIGALGO_MAX)
                             clSuites.hashSigAlgoSz = HELLO_EXT_SIGALGO_MAX;
-
-#ifdef WOLFSSL_MPDTLS
-                    }
-                    else if (extId == HELLO_EXT_MP_DTLS) {
-                        /* Read the extension content, set the MPDTLS byte in consequence */
-                        WOLFSSL_MSG("Extension MPDTLS detected \n");
-                        ssl->options.mpdtls = input[i];
-                        i += extSz;
-#endif
                     }
                     else
                         i += extSz;

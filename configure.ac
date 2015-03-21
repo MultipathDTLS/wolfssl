@@ -149,7 +149,7 @@ fi
 
 # MPDTLS
 AC_ARG_ENABLE([mpdtls],
-    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls],
+    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls and TLS Extensions],
     [ ENABLED_MPDTLS=$enableval ],
     [ ENABLED_MPDTLS=no ]
     )
@@ -160,7 +160,7 @@ then
   	ENABLED_DTLS=yes
     AM_CFLAGS="-DWOLFSSL_DTLS $AM_CFLAGS"
   fi
-  AM_CFLAGS="-DWOLFSSL_MPDTLS $AM_CFLAGS"
+  AM_CFLAGS="-DWOLFSSL_MPDTLS -DHAVE_TLS_EXTENSIONS $AM_CFLAGS"
 fi
 
 

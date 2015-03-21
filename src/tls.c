@@ -1889,6 +1889,77 @@ int TLSX_UseSessionTicket(TLSX** extensions, SessionTicket* ticket)
 
 #endif /* HAVE_SESSION_TICKET */
 
+#ifdef WOLFSSL_MPDTLS
+
+static word16 TLSX_MultiPathDTLS_Write(byte* data, byte* output)
+{
+    output[0] = data[0];
+    
+    return HELLO_EXT_MP_DTLS_LEN;
+}   
+    
+static int TLSX_MultiPathDTLS_Parse(WOLFSSL* ssl, byte* input, 
+                                                  word16 length, byte isRequest)
+{
+    if (length != HELLO_EXT_MP_DTLS_LEN)
+        return BUFFER_ERROR;
+
+    switch (*input) {
+        case 0x00 : ssl->options.mpdtls =  0; break;
+        case 0x01 : ssl->options.mpdtls =  1; break;
+
+        default:
+            SendAlert(ssl, alert_fatal, illegal_parameter);
+
+            return UNKNOWN_MPDTLS_VAL_E;
+    }
+
+#ifndef NO_WOLFSSL_SERVER
+    if (isRequest) {
+        int r = TLSX_UseMultiPathDTLS(&ssl->extensions, *input);
+
+        if (r != SSL_SUCCESS) return r; /* throw error */
+
+        TLSX_SetResponse(ssl, MULTIPATH_DTLS);
+    }
+#endif
+
+    return 0;
+}
+
+int TLSX_UseMultiPathDTLS(TLSX** extensions, byte enabled)
+{
+    byte* data = NULL;
+    int   ret  = 0;
+
+    if (extensions == NULL)
+        return BAD_FUNC_ARG;
+
+    if ((data = XMALLOC(HELLO_EXT_MP_DTLS_LEN, 0, DYNAMIC_TYPE_TLSX)) == NULL)
+        return MEMORY_E;
+
+    data[0] = enabled;
+
+    /* push new MFL extension. */
+    if ((ret = TLSX_Push(extensions, MULTIPATH_DTLS, data)) != 0) {
+        XFREE(data, 0, DYNAMIC_TYPE_TLSX);
+        return ret;
+    }
+
+    return SSL_SUCCESS;
+}
+
+#define MD_GET_SIZE(data)      HELLO_EXT_MP_DTLS_LEN
+#define MD_WRITE               TLSX_MultiPathDTLS_Write
+#define MD_PARSE               TLSX_MultiPathDTLS_Parse
+
+#else
+
+#define MD_GET_SIZE(data)      0
+#define MD_WRITE(a, b)         0
+#define MD_PARSE(a, b, c, d)   0
+
+#endif /* WOLFSSL_MPDTLS */
 
 TLSX* TLSX_Find(TLSX* list, TLSX_Type type)
 {
@@ -1929,6 +2000,10 @@ void TLSX_FreeAll(TLSX* list)
                 break;
 
             case SESSION_TICKET:
+                /* Nothing to do. */
+                break;
+
+            case MULTIPATH_DTLS:
                 /* Nothing to do. */
                 break;
         }
@@ -1981,6 +2056,10 @@ static word16 TLSX_GetSize(TLSX* list, byte* semaphore, byte isRequest)
 
             case SESSION_TICKET:
                 length += STK_GET_SIZE(extension->data, isRequest);
+                break;
+
+            case MULTIPATH_DTLS:
+                length += MD_GET_SIZE(extension->data);
                 break;
         }
 
@@ -2039,6 +2118,10 @@ static word16 TLSX_Write(TLSX* list, byte* output, byte* semaphore,
                 offset += STK_WRITE(extension->data, output + offset,
                                                                      isRequest);
                 break;
+
+            case MULTIPATH_DTLS:
+                offset += MD_WRITE(extension->data, output + offset);
+                break;
         }
 
         /* writing extension data length */
@@ -2085,6 +2168,8 @@ word16 TLSX_WriteRequest(WOLFSSL* ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
+        offset += OPAQUE16_LEN; /* extensions length */
+
         EC_VALIDATE_REQUEST(ssl, semaphore);
 
         if (ssl->extensions)
@@ -2114,6 +2199,9 @@ word16 TLSX_WriteRequest(WOLFSSL* ssl, byte* output)
             for (i = 0; i < ssl->suites->hashSigAlgoSz; i++, offset++)
                 output[offset] = ssl->suites->hashSigAlgo[i];
         }
+
+        if (offset > OPAQUE16_LEN)
+            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;
@@ -2132,7 +2220,10 @@ word16 TLSX_GetResponseSize(WOLFSSL* ssl)
         length += TLSX_GetSize(ssl->extensions, semaphore, 0);
 
     /* All the response data is set at the ssl object only, so no ctx here. */
-    
+
+    if (length)
+        length += OPAQUE16_LEN; /* for total length storage */
+
     return length;
 }
 
@@ -2143,7 +2234,12 @@ word16 TLSX_WriteResponse(WOLFSSL *ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
+        offset += OPAQUE16_LEN; /* extensions length */
+
         offset += TLSX_Write(ssl->extensions, output + offset, semaphore, 0);
+
+        if (offset > OPAQUE16_LEN)
+            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;
@@ -2211,6 +2307,12 @@ int TLSX_Parse(WOLFSSL* ssl, byte* input, word16 length, byte isRequest,
                 WOLFSSL_MSG("Session Ticket extension received");
 
                 ret = STK_PARSE(ssl, input + offset, size, isRequest);
+                break;
+
+            case MULTIPATH_DTLS:
+                WOLFSSL_MSG("Multipath DTLS extension received");
+
+                ret = MD_PARSE(ssl, input + offset, size, isRequest);
                 break;
 
             case HELLO_EXT_SIG_ALGO:

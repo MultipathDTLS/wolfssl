@@ -127,7 +127,7 @@ enum wolfSSL_ErrorCodes {
     SANITY_MSG_E            = -394,        /* Sanity check on msg order error */
     DUPLICATE_MSG_E         = -395,        /* Duplicate message error */
     SNI_UNSUPPORTED         = -396,        /* SSL 3.0 does not support SNI */
-
+    UNKNOWN_MPDTLS_VAL_E    = -450,        /* MPDTLS extension value Error */
     /* add strings to SetErrorString !!!!! */
 
     /* begin negotiation parameter errors */
