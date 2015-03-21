@@ -148,6 +148,9 @@ enum {
 
     MAC_CMP_FAILED_E    = -213,  /* MAC comparison failed */
 
+	PARSE_ADDR_E        = -298,  /* Address not parsable */
+    NOT_FOUND_E         = -299,  /* Address not found */
+	
     MIN_CODE_E          = -300   /* errors -101 - -299 */
 };
 

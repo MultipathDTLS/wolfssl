@@ -220,6 +220,32 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
         }
     #endif
 
+    #ifdef WOLFSSL_MPDTLS
+        struct sockaddr_storage cl;
+        socklen_t sz = sizeof(struct sockaddr_storage);
+        socklen_t sz2 = sizeof(struct sockaddr_storage);
+
+        InsertSock(ssl, ssl->mpdtls_socks, fd);
+
+        if (getpeername(fd, (struct sockaddr *) &cl, &sz) == 0) {
+            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl, sz);
+        }
+        
+        if (getsockname(fd, (struct sockaddr *) &cl, &sz2) == 0) {
+            //we discard non connected socket
+            int valid = 1;
+            if(cl.ss_family == AF_INET){
+                valid = ((struct sockaddr_in*) &cl)->sin_port;
+            }else if(cl.ss_family == AF_INET6){
+                valid = ((struct sockaddr_in6*) &cl)->sin6_port;
+            }
+            if(valid) {
+                InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl, sz2);
+            }
+        }
+
+    #endif
+
     WOLFSSL_LEAVE("SSL_set_fd", SSL_SUCCESS);
     return SSL_SUCCESS;
 }
@@ -293,6 +319,93 @@ int wolfSSL_dtls(WOLFSSL* ssl)
     return ssl->options.dtls;
 }
 
+int wolfSSL_mpdtls(WOLFSSL* ssl)
+{
+    return ssl->options.mpdtls;
+}
+
+
+#ifdef WOLFSSL_MPDTLS
+int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
+{
+    int error, n;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        for (n = 0; res; res = res->ai_next) {
+            // Get a free port to bind to
+            struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
+            if (addr->sa_family == AF_INET) {
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr, res->ai_addrlen);
+            } else if (addr->sa_family == AF_INET6) {
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr, res->ai_addrlen);
+            }
+
+            if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {
+                n++; // Count the number of addresses we add
+            }
+        }
+    }
+
+    if( n > 0) {
+        MPDTLS_ADDRS *ma = ssl->mpdtls_host;
+        SendChangeInterface(ssl, (struct sockaddr *) (ma->addrs + (ma->nbrAddrs - n)), n, mpdtls_add);
+        mpdtlsSyncSock(ssl);
+    }
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
+{
+    int error;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        while (res) {
+            if (DeleteAddr(ssl, ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
+                SendChangeInterface(ssl, res->ai_addr, 1, mpdtls_del);
+            }
+
+            /* go to next address */
+            res = res->ai_next;
+        }
+    }
+
+    mpdtlsSyncSock(ssl);
+    
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_add_fd(WOLFSSL* ssl, int fd)
+{
+    return InsertSock(ssl, ssl->mpdtls_socks, fd);
+}
+
+int wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int fd)
+{
+    return DeleteSock(ssl, ssl->mpdtls_socks, fd);
+}
+
+#endif
+
 
 #ifndef WOLFSSL_LEANPSK
 void wolfSSL_set_using_nonblock(WOLFSSL* ssl, int nonblock)
@@ -305,6 +418,43 @@ void wolfSSL_set_using_nonblock(WOLFSSL* ssl, int nonblock)
 int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
 {
 #ifdef WOLFSSL_DTLS
+#ifdef WOLFSSL_MPDTLS
+    struct sockaddr* host;
+    socklen_t hostSz = peerSz;
+    //we consider the host to be the same family as the peer it tries to connect to
+    if (((struct sockaddr *) peer)->sa_family==AF_INET) {
+        struct sockaddr_in hostaddr;
+        bzero(&hostaddr, sizeof(struct sockaddr_in));
+        hostaddr.sin_family = AF_INET;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in);
+    }else{
+        struct sockaddr_in6 hostaddr;
+        bzero(&hostaddr, sizeof(struct sockaddr_in6));
+        hostaddr.sin6_family = AF_INET6;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in6);
+    }
+    
+    int optval = 1;
+    setsockopt(wolfSSL_get_fd(ssl), SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    if (bind(wolfSSL_get_fd(ssl), host, hostSz) == 0) {
+        if (connect(wolfSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) == 0) {
+            
+            if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
+                InsertAddr(ssl, ssl->mpdtls_host, host, hostSz);
+            }
+        } else {
+            WOLFSSL_MSG("Error on connect in set peer");
+        }
+    } else {
+        WOLFSSL_MSG("Error on bind in set peer");
+    }
+
+    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) peer, peerSz);
+
+#endif /* WOLFSSL_MPDTLS */
     void* sa = (void*)XMALLOC(peerSz, ssl->heap, DYNAMIC_TYPE_SOCKADDR);
     if (sa != NULL) {
         if (ssl->buffers.dtlsCtx.peer.sa != NULL)
@@ -5067,6 +5217,9 @@ int wolfSSL_dtls_got_timeout(WOLFSSL* ssl)
         #ifdef WOLFSSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
+        #ifdef WOLFSSL_MPDTLS
+                ssl->options.mpdtls = 1;
+        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 
@@ -5363,6 +5516,9 @@ int wolfSSL_dtls_got_timeout(WOLFSSL* ssl)
         #ifdef WOLFSSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
+        #ifdef WOLFSSL_MPDTLS
+                ssl->options.mpdtls = 1;
+        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 

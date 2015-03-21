@@ -674,6 +674,7 @@ enum Misc {
     NO_COMPRESSION  =  0,
     ZLIB_COMPRESSION = 221,     /* wolfSSL zlib compression */
     HELLO_EXT_SIG_ALGO = 13,    /* ID for the sig_algo hello extension */
+    HELLO_EXT_MP_DTLS = 42,     /* ID for the MPDTLS extension */
     SECRET_LEN      = 48,       /* pre RSA and all master */
     ENCRYPT_LEN     = 512,      /* allow 4096 bit static buffer */
     SIZEOF_SENDER   =  4,       /* clnt or srvr           */
@@ -734,6 +735,8 @@ enum Misc {
     HELLO_EXT_LEN         = 6,  /* length of the lazy hello extensions */
     HELLO_EXT_SIGALGO_SZ  = 2,  /* length of signature algo extension  */
     HELLO_EXT_SIGALGO_MAX = 32, /* number of items in the signature algo list */
+    HELLO_EXT_MP_DTLS_LEN = 1,  /* Length of the field to be carried in the extension */
+    HELLO_EXT_MP_DTLS_SZ  = 5,  /* total length of the MPDTLS hello extension */
 
     DTLS_HANDSHAKE_HEADER_SZ = 12, /* normal + seq(2) + offset(3) + length(3) */
     DTLS_RECORD_HEADER_SZ    = 13, /* normal + epoch(2) + seq_num(6) */
@@ -1229,6 +1232,36 @@ typedef struct WOLFSSL_DTLS_CTX {
     } DtlsState;
 
 #endif /* WOLFSSL_DTLS */
+
+#ifdef WOLFSSL_MPDTLS
+    /* MPDTLS address manager */
+    typedef struct MPDTLS_ADDRS {
+        int                        nbrAddrs;          /* Number of available addresses */
+        int                       nextRound;          /* Contains the number of the next address (round robin schedule) */
+        struct sockaddr_storage*      addrs;          /* Contains all the available addresses for MPDTLS (both IPV4 or IPV6) */
+    } MPDTLS_ADDRS;
+
+    void MpdtlsAddrsInit(WOLFSSL*, MPDTLS_ADDRS**);
+    void MpdtlsAddrsFree(WOLFSSL*, MPDTLS_ADDRS**);
+
+    typedef struct MPDTLS_SOCKS {
+        int*            socks;              /* Contains all the available sockets for MPDTLS */
+        int             nbrSocks;           /* Number of available sockets */
+        int             nextReadRound;      /* Contains the number of the next sockets for read (round robin schedule) */
+        int             nextWriteRound;      /* Contains the number of the next sockets for write (round robin schedule) */
+    } MPDTLS_SOCKS;
+    
+    
+    void MpdtlsSocksInit(WOLFSSL*, MPDTLS_SOCKS**);
+    void MpdtlsSocksFree(WOLFSSL*, MPDTLS_SOCKS**);
+    
+    
+    int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
+    int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
+    int mpdtlsIsSockPresent(WOLFSSL*, const struct sockaddr*, const struct sockaddr*);
+    int mpdtlsSyncSock(WOLFSSL*);
+    int mpdtlsAddNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
+#endif /* WOLFSSL_MPDTLS */
 
 
 /* keys and secrets */
@@ -2100,6 +2133,12 @@ struct WOLFSSL {
     void*           IOCB_CookieCtx;     /* gen cookie ctx */
     word32          dtls_expected_rx;
 #endif
+#ifdef WOLFSSL_MPDTLS
+    MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
+    MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
+    MPDTLS_SOCKS*   mpdtls_socks;       /* available sockets */
+    MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
+#endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
     TimeoutInfo     timeoutInfo;        /* info saved during handshake */
@@ -2229,7 +2268,8 @@ enum ContentType {
     change_cipher_spec = 20, 
     alert              = 21, 
     handshake          = 22, 
-    application_data   = 23 
+    application_data   = 23, 
+    change_interface   = 42         /* MPDTLS addition */
 };
 
 
@@ -2270,6 +2310,25 @@ enum HandShakeType {
                                      conflicts with handshake finished */
 };
 
+#ifdef WOLFSSL_MPDTLS
+    /* MPDTLS change interface header */
+    typedef struct MPDtlsChangeInterfaceHeader {
+        byte                        mode;
+        byte                        nbrAddrs;
+    } MPDtlsChangeInterfaceHeader;
+
+    /* MPDTLS change interface address */
+    typedef struct MPDtlsChangeInterfaceAddress {
+        u_int16_t              inetFamily;
+        byte                   address[16];
+        u_int16_t              portNumber;
+    } MPDtlsChangeInterfaceAddress;
+
+    enum ChangeInterfaceMode { /* Need to be removed */
+        mpdtls_add      = 10,
+        mpdtls_del      = 20            /* Delete */
+    };
+#endif /* WOLFSSL_MPDTLS */
 
 static const byte client[SIZEOF_SENDER] = { 0x43, 0x4C, 0x4E, 0x54 };
 static const byte server[SIZEOF_SENDER] = { 0x53, 0x52, 0x56, 0x52 };
@@ -2354,6 +2413,16 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
                                                 byte, word32, word32, void*);
     WOLFSSL_LOCAL DtlsMsg* DtlsMsgInsert(DtlsMsg*, DtlsMsg*);
 #endif /* WOLFSSL_DTLS */
+
+#ifdef WOLFSSL_MPDTLS
+    WOLFSSL_LOCAL int  InsertSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  DeleteSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  DeleteSockbyIndex(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  InsertAddr(WOLFSSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int  DeleteAddr(WOLFSSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int  DeleteAddrbyIndex(WOLFSSL* ssl, MPDTLS_ADDRS*, int);
+    WOLFSSL_LOCAL int  GetFreePortNumber(WOLFSSL* ssl, int, const struct sockaddr*, socklen_t);
+#endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS
     

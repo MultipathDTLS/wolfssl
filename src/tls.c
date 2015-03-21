@@ -2085,8 +2085,6 @@ word16 TLSX_WriteRequest(WOLFSSL* ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
-        offset += OPAQUE16_LEN; /* extensions length */
-
         EC_VALIDATE_REQUEST(ssl, semaphore);
 
         if (ssl->extensions)
@@ -2116,9 +2114,6 @@ word16 TLSX_WriteRequest(WOLFSSL* ssl, byte* output)
             for (i = 0; i < ssl->suites->hashSigAlgoSz; i++, offset++)
                 output[offset] = ssl->suites->hashSigAlgo[i];
         }
-
-        if (offset > OPAQUE16_LEN)
-            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;
@@ -2137,10 +2132,7 @@ word16 TLSX_GetResponseSize(WOLFSSL* ssl)
         length += TLSX_GetSize(ssl->extensions, semaphore, 0);
 
     /* All the response data is set at the ssl object only, so no ctx here. */
-
-    if (length)
-        length += OPAQUE16_LEN; /* for total length storage */
-
+    
     return length;
 }
 
@@ -2151,12 +2143,7 @@ word16 TLSX_WriteResponse(WOLFSSL *ssl, byte* output)
     if (TLSX_SupportExtensions(ssl) && output) {
         byte semaphore[SEMAPHORE_SIZE] = {0};
 
-        offset += OPAQUE16_LEN; /* extensions length */
-
         offset += TLSX_Write(ssl->extensions, output + offset, semaphore, 0);
-
-        if (offset > OPAQUE16_LEN)
-            c16toa(offset - OPAQUE16_LEN, output); /* extensions length */
     }
 
     return offset;

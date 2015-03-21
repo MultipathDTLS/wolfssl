@@ -147,6 +147,22 @@ then
   AM_CFLAGS="-DWOLFSSL_DTLS $AM_CFLAGS"
 fi
 
+# MPDTLS
+AC_ARG_ENABLE([mpdtls],
+    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls],
+    [ ENABLED_MPDTLS=$enableval ],
+    [ ENABLED_MPDTLS=no ]
+    )
+if test "$ENABLED_MPDTLS" = "yes"
+then
+  if test "$ENABLED_DTLS" = "no"
+  then
+  	ENABLED_DTLS=yes
+    AM_CFLAGS="-DWOLFSSL_DTLS $AM_CFLAGS"
+  fi
+  AM_CFLAGS="-DWOLFSSL_MPDTLS $AM_CFLAGS"
+fi
+
 
 # OPENSSL Extra Compatibility
 AC_ARG_ENABLE([opensslextra],
@@ -1970,6 +1986,7 @@ echo "   * MEMORY:                    $ENABLED_MEMORY"
 echo "   * I/O POOL:                  $ENABLED_IOPOOL"
 echo "   * ERROR_STRINGS:             $ENABLED_ERROR_STRINGS"
 echo "   * DTLS:                      $ENABLED_DTLS"
+echo "   * MultiPath DTLS:            $ENABLED_MPDTLS"
 echo "   * Old TLS Versions:          $ENABLED_OLD_TLS"
 echo "   * OCSP:                      $ENABLED_OCSP"
 echo "   * CRL:                       $ENABLED_CRL"

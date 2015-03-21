@@ -4,12 +4,12 @@
 #
 
 # Git hooks should come before autoreconf.
-if test -d .git; then
-  if ! test -d .git/hooks; then
-    mkdir .git/hooks
-  fi
-  ln -s -f ../../pre-commit.sh .git/hooks/pre-commit
-fi
+# if test -d .git; then
+#   if ! test -d .git/hooks; then
+#     mkdir .git/hooks
+#   fi
+#   ln -s -f ../../pre-commit.sh .git/hooks/pre-commit
+# fi
 
 # Set HAVE_FIPS_SOURCE to 1 in your .profile if you have access to the FIPS
 # repository. (Hint: If you don't work for us, you don't. This will fail.)
@@ -23,11 +23,11 @@ if test -n "$HAVE_FIPS_SOURCE" -a ! -d ./fips; then
 fi
 
 # If this is a source checkout then call autoreconf with error as well
-if test -d .git; then
-  WARNINGS="all,error"
-else
-  WARNINGS="all"
-fi
+# if test -d .git; then
+#   WARNINGS="all,error"
+# else
+#   WARNINGS="all"
+# fi
 
 autoreconf --install --force --verbose
 

@@ -38,6 +38,13 @@
     #endif
 #endif
 
+#ifdef WOLFSSL_MPDTLS
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <unistd.h>
+#endif
+
 #ifdef WOLFSSL_PREFIX
     #include "prefix_ssl.h"
 #endif
@@ -330,6 +337,13 @@ WOLFSSL_API int  wolfSSL_dtls(WOLFSSL* ssl);
 
 WOLFSSL_API int  wolfSSL_dtls_set_peer(WOLFSSL*, void*, unsigned int);
 WOLFSSL_API int  wolfSSL_dtls_get_peer(WOLFSSL*, void*, unsigned int*);
+
+/*  MPDTLS functions    */
+WOLFSSL_API int  wolfSSL_mpdtls(CYASSL* ssl);
+WOLFSSL_API int  wolfSSL_mpdtls_new_addr(CYASSL* ssl, const char*);
+WOLFSSL_API int  wolfSSL_mpdtls_del_addr(CYASSL* ssl, const char *);
+WOLFSSL_API int  wolfSSL_mpdtls_add_fd(CYASSL* ssl, int);
+WOLFSSL_API int  wolfSSL_mpdtls_del_fd(CYASSL* ssl, int);
 
 WOLFSSL_API int   wolfSSL_ERR_GET_REASON(int err);
 WOLFSSL_API char* wolfSSL_ERR_error_string(unsigned long,char*);
