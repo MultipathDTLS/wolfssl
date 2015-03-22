@@ -2349,8 +2349,7 @@ enum HandShakeType {
 
     /* MPDTLS change interface address */
     typedef struct MPDtlsChangeInterfaceAddress {
-        u_int16_t              inetFamily;
-        byte                   address[16];
+        byte                   address[16]; //ipv6 or ipv4 embedded inside ipv6
         u_int16_t              portNumber;
     } MPDtlsChangeInterfaceAddress;
 #endif /* WOLFSSL_MPDTLS */
