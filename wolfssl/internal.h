@@ -1307,6 +1307,7 @@ typedef enum {
     TRUNCATED_HMAC         = 0x0004,
     ELLIPTIC_CURVES        = 0x000a,
     SESSION_TICKET         = 0x0023,
+    HEARTBEAT              = 0x000f,
     SECURE_RENEGOTIATION   = 0xff01,
     MULTIPATH_DTLS         = 0x0042
 } TLSX_Type;
@@ -1429,6 +1430,26 @@ typedef struct SecureRenegotiation {
 WOLFSSL_LOCAL int TLSX_UseSecureRenegotiation(TLSX** extensions);
 
 #endif /* HAVE_SECURE_RENEGOTIATION */
+
+#ifdef HAVE_HEARTBEAT
+
+typedef enum HeartbeatMode {
+    PEER_ALLOWED_TO_SEND        = 1,
+    PEER_NOT_ALLOWED_TO_SEND    = 2
+} HeartbeatMode;
+
+typedef enum HeartbeatMessageType {
+    HEARTBEAT_REQUEST   = 1,
+    HEARTBEAT_RESPONSE  = 2
+} HeartbeatMessageType;
+
+typedef struct HeartbeatExtension {
+    HeartbeatMode mode;
+} HeartbeatExtension;
+
+WOLFSSL_LOCAL int TLSX_UseHeartbeat(TLSX** extensions, HeartbeatMode mode);
+
+#endif /* HAVE_HEARTBEAT */
 
 #ifdef HAVE_SESSION_TICKET
 
@@ -2178,6 +2199,9 @@ struct WOLFSSL {
     #ifdef HAVE_SECURE_RENEGOTIATION
         SecureRenegotiation* secure_renegotiation; /* valid pointer indicates */
     #endif                                         /* user turned on */
+    #ifdef HAVE_HEARTBEAT
+        HeartbeatMode peerMode;
+    #endif
     #if !defined(NO_WOLFSSL_CLIENT) && defined(HAVE_SESSION_TICKET)
         CallbackSessionTicket session_ticket_cb;
         void*                 session_ticket_ctx;

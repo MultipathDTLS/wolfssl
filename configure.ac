@@ -136,6 +136,17 @@ AS_IF([ test "x$ENABLED_SINGLETHREADED" = "xno" ],[
 AS_IF([ test "x$ENABLED_SINGLETHREADED" = "xyes" ],[ AM_CFLAGS="-DSINGLE_THREADED $AM_CFLAGS" ])
 
 
+# HEARTBEAT
+AC_ARG_ENABLE([heartbeat],
+    [  --enable-heartbeat      Enable Heartbeat (default: disabled)],
+    [ ENABLED_HEARTBEAT=$enableval ],
+    [ ENABLED_HEARTBEAT=no ]
+    )
+if test "$ENABLED_HEARTBEAT" = "yes"
+then
+  AM_CFLAGS="-DHAVE_HEARTBEAT -DHAVE_TLS_EXTENSIONS $AM_CFLAGS"
+fi
+
 # DTLS
 AC_ARG_ENABLE([dtls],
     [  --enable-dtls           Enable wolfSSL DTLS (default: disabled)],
@@ -147,9 +158,10 @@ then
   AM_CFLAGS="-DWOLFSSL_DTLS $AM_CFLAGS"
 fi
 
+
 # MPDTLS
 AC_ARG_ENABLE([mpdtls],
-    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls and TLS Extensions],
+    [  --enable-mpdtls           Enable UCL MultiPath DTLS (default: disabled) will --enable-dtls, --enable-heartbeat and TLS Extensions],
     [ ENABLED_MPDTLS=$enableval ],
     [ ENABLED_MPDTLS=no ]
     )
@@ -159,6 +171,11 @@ then
   then
   	ENABLED_DTLS=yes
     AM_CFLAGS="-DWOLFSSL_DTLS $AM_CFLAGS"
+  fi
+  if test "$ENABLED_HEARTBEAT" = "no"
+  then
+    ENABLED_HEARTBEAT=yes
+  AM_CFLAGS="-DHAVE_HEARTBEAT $AM_CFLAGS"
   fi
   AM_CFLAGS="-DWOLFSSL_MPDTLS -DHAVE_TLS_EXTENSIONS $AM_CFLAGS"
 fi
@@ -2001,6 +2018,7 @@ echo "   * Maximum Fragment Length:   $ENABLED_MAX_FRAGMENT"
 echo "   * Truncated HMAC:            $ENABLED_TRUNCATED_HMAC"
 echo "   * Renegotiation Indication:  $ENABLED_RENEGOTIATION_INDICATION"
 echo "   * Secure Renegotiation:      $ENABLED_SECURE_RENEGOTIATION"
+echo "   * Heartbeat messages:        $ENABLED_HEARTBEAT"
 echo "   * Supported Elliptic Curves: $ENABLED_SUPPORTED_CURVES"
 echo "   * Session Ticket:            $ENABLED_SESSION_TICKET"
 echo "   * All TLS Extensions:        $ENABLED_TLSX"

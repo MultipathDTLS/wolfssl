@@ -1380,6 +1380,14 @@ WOLFSSL_API int wolfSSL_set_SessionTicket_cb(WOLFSSL*,
 #endif
 #endif
 
+#ifdef HAVE_HEARTBEAT
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseHeartbeat(WOLFSSL*, unsigned char);
+
+#endif
+#endif
+
 /* MultiPath DTLS */
 #ifdef WOLFSSL_MPDTLS
 #ifndef NO_WOLFSSL_CLIENT

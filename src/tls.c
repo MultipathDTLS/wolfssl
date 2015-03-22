@@ -1780,6 +1780,82 @@ int TLSX_UseSecureRenegotiation(TLSX** extensions)
 
 #endif /* HAVE_SECURE_RENEGOTIATION */
 
+#ifdef HAVE_HEARTBEAT
+
+static word16 TLSX_Heartbeat_Write(byte* data, byte* output)
+{
+    output[0] = data[0];
+
+    return ENUM_LEN;
+}
+
+static int TLSX_Heartbeat_Parse(WOLFSSL* ssl, byte* input, word16 length,
+                                                                 byte isRequest)
+{
+    if (length != ENUM_LEN)
+        return BUFFER_ERROR;
+
+    switch (*input) {
+        case PEER_ALLOWED_TO_SEND:
+        case PEER_NOT_ALLOWED_TO_SEND:
+            ssl->peerMode = *input;
+            break;
+        default:
+            SendAlert(ssl, alert_fatal, illegal_parameter);
+
+            return UNKNOWN_HEARTBEAT_MODE_E;
+    }
+
+#ifndef NO_WOLFSSL_SERVER
+    if (isRequest) {
+        int r = TLSX_UseHeartbeat(&ssl->extensions, PEER_ALLOWED_TO_SEND);
+
+        if (r != SSL_SUCCESS) return r; /* throw error */
+
+        TLSX_SetResponse(ssl, HEARTBEAT);
+    }
+#endif
+
+    return 0;
+}
+
+int TLSX_UseHeartbeat(TLSX** extensions, HeartbeatMode mode)
+{
+    byte* data = NULL;
+    int   ret  = 0;
+
+    if (extensions == NULL)
+        return BAD_FUNC_ARG;
+
+    if ((data = XMALLOC(ENUM_LEN, 0, DYNAMIC_TYPE_TLSX)) == NULL)
+        return MEMORY_E;
+
+    data[0] = mode;
+
+    /* push new MFL extension. */
+    if ((ret = TLSX_Push(extensions, HEARTBEAT, data)) != 0) {
+        XFREE(data, 0, DYNAMIC_TYPE_TLSX);
+        return ret;
+    }
+
+    return SSL_SUCCESS;
+}
+
+
+#define HB_FREE_ALL(data)    XFREE(data, 0, DYNAMIC_TYPE_TLSX)
+#define HB_GET_SIZE(data)    ENUM_LEN
+#define HB_WRITE             TLSX_Heartbeat_Write
+#define HB_PARSE             TLSX_Heartbeat_Parse
+
+#else
+
+#define HB_FREE_ALL(data)
+#define HB_GET_SIZE(data)    0
+#define HB_WRITE(a, b)       0
+#define HB_PARSE(a, b, c, d) 0
+
+#endif /* HAVE_HEARTBEAT */
+
 #ifdef HAVE_SESSION_TICKET
 
 static void TLSX_SessionTicket_ValidateRequest(WOLFSSL* ssl)
@@ -1999,6 +2075,10 @@ void TLSX_FreeAll(TLSX* list)
                 SCR_FREE_ALL(extension->data);
                 break;
 
+            case HEARTBEAT:
+                HB_FREE_ALL(extension->data);
+                break;
+
             case SESSION_TICKET:
                 /* Nothing to do. */
                 break;
@@ -2052,6 +2132,10 @@ static word16 TLSX_GetSize(TLSX* list, byte* semaphore, byte isRequest)
 
             case SECURE_RENEGOTIATION:
                 length += SCR_GET_SIZE(extension->data, isRequest);
+                break;
+
+            case HEARTBEAT:
+                length += HB_GET_SIZE(extension->data);
                 break;
 
             case SESSION_TICKET:
@@ -2112,6 +2196,10 @@ static word16 TLSX_Write(TLSX* list, byte* output, byte* semaphore,
             case SECURE_RENEGOTIATION:
                 offset += SCR_WRITE(extension->data, output + offset,
                                                                      isRequest);
+                break;
+
+            case HEARTBEAT:
+                offset += HB_WRITE(extension->data, output + offset);
                 break;
 
             case SESSION_TICKET:
@@ -2301,6 +2389,12 @@ int TLSX_Parse(WOLFSSL* ssl, byte* input, word16 length, byte isRequest,
                 WOLFSSL_MSG("Secure Renegotiation extension received");
 
                 ret = SCR_PARSE(ssl, input + offset, size, isRequest);
+                break;
+
+            case HEARTBEAT:
+                WOLFSSL_MSG("Heartbeat extension received");
+
+                ret = HB_PARSE(ssl, input + offset, size, isRequest);
                 break;
 
             case SESSION_TICKET:

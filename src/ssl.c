@@ -1034,6 +1034,20 @@ WOLFSSL_API int wolfSSL_set_SessionTicket_cb(WOLFSSL* ssl,
 }
 #endif
 
+#ifdef HAVE_HEARTBEAT
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseHeartbeat(WOLFSSL* ssl, byte mode)
+{
+    if (ssl == NULL)
+        return BAD_FUNC_ARG;
+
+    return TLSX_UseHeartbeat(&ssl->extensions, mode);
+}
+
+#endif
+#endif /* HAVE_HEARTBEAT */
+
 #ifdef WOLFSSL_MPDTLS
 #ifndef NO_WOLFSSL_CLIENT
 
@@ -1041,6 +1055,14 @@ WOLFSSL_API int wolfSSL_UseMultiPathDTLS(WOLFSSL* ssl, byte enabled)
 {
     if (ssl == NULL || (enabled != 0x00 && enabled != 0x01))
         return BAD_FUNC_ARG;
+
+#ifdef HAVE_HEARTBEAT
+    if (enabled == 0x01) {
+        int ret = TLSX_UseHeartbeat(&ssl->extensions, PEER_ALLOWED_TO_SEND);
+        if(ret != SSL_SUCCESS)
+            return ret;
+    }
+#endif
 
     return TLSX_UseMultiPathDTLS(&ssl->extensions, enabled);
 }

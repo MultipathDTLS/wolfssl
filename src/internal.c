@@ -1574,6 +1574,9 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 #ifdef HAVE_MAX_FRAGMENT
     ssl->max_fragment = MAX_RECORD_SIZE;
 #endif
+#ifdef HAVE_HEARTBEAT
+    ssl->peerMode = PEER_NOT_ALLOWED_TO_SEND;
+#endif
 #endif
 
     /* default alert state (none) */
@@ -8554,6 +8557,9 @@ const char* wolfSSL_ERR_reason_error_string(unsigned long e)
 
     case UNKNOWN_MPDTLS_VAL_E:
         return "MultiPath DTLS extension value Error";
+
+    case UNKNOWN_HEARTBEAT_MODE_E:
+        return "Heartbeat Mode Error";
 
     default :
         return "unknown error number";
