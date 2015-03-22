@@ -356,9 +356,8 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
         }
     }
 
-    if( n > 0) {
-        MPDTLS_ADDRS *ma = ssl->mpdtls_host;
-        SendChangeInterface(ssl, (struct sockaddr *) (ma->addrs + (ma->nbrAddrs - n)), n, mpdtls_add);
+    if (n > 0) {
+        SendChangeInterface(ssl, ssl->mpdtls_host, 0);
         mpdtlsSyncSock(ssl);
     }
     return SSL_SUCCESS;
@@ -366,7 +365,7 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
 
 int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
 {
-    int error;
+    int error, n = 0;
     struct addrinfo *res;
     struct addrinfo hints;
 
@@ -381,7 +380,7 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
     } else {
         while (res) {
             if (DeleteAddr(ssl, ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
-                SendChangeInterface(ssl, res->ai_addr, 1, mpdtls_del);
+                n++;
             }
 
             /* go to next address */
@@ -389,8 +388,11 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
         }
     }
 
-    mpdtlsSyncSock(ssl);
-    
+    if (n > 0) {
+        SendChangeInterface(ssl, ssl->mpdtls_host, 0);
+        mpdtlsSyncSock(ssl);
+    }
+
     return SSL_SUCCESS;
 }
 

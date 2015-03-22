@@ -2319,7 +2319,7 @@ enum HandShakeType {
 #ifdef WOLFSSL_MPDTLS
     /* MPDTLS change interface header */
     typedef struct MPDtlsChangeInterfaceHeader {
-        byte                        mode;
+        byte                        reply;
         byte                        nbrAddrs;
     } MPDtlsChangeInterfaceHeader;
 
@@ -2329,11 +2329,6 @@ enum HandShakeType {
         byte                   address[16];
         u_int16_t              portNumber;
     } MPDtlsChangeInterfaceAddress;
-
-    enum ChangeInterfaceMode { /* Need to be removed */
-        mpdtls_add      = 10,
-        mpdtls_del      = 20            /* Delete */
-    };
 #endif /* WOLFSSL_MPDTLS */
 
 static const byte client[SIZEOF_SENDER] = { 0x43, 0x4C, 0x4E, 0x54 };
@@ -2346,7 +2341,7 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 /* internal functions */
 WOLFSSL_LOCAL int SendChangeCipher(WOLFSSL*);
 WOLFSSL_LOCAL int SendData(WOLFSSL*, const void*, int);
-WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const struct sockaddr*, int, int);
+WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
 WOLFSSL_LOCAL int SendPacket(WOLFSSL*, const void*, int, int);
 WOLFSSL_LOCAL int SendCertificate(WOLFSSL*);
 WOLFSSL_LOCAL int SendCertificateRequest(WOLFSSL*);

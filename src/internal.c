@@ -6595,39 +6595,38 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     }
 
     MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
+    /* We empty the structure and rebuild it */
+    MpdtlsAddrsFree(ssl, &ma);
+    MpdtlsAddrsInit(ssl, &ma);
     
-    switch(cih->mode) {
-        case mpdtls_add:
-            for(i = 0; i < cih->nbrAddrs; i++) {
-                MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
-                if(ntohs(changeAddr->inetFamily) == AF_INET) {
-                    struct sockaddr_in addr;
-                    addr.sin_family = AF_INET;
-                    addr.sin_port = ntohs(changeAddr->portNumber);
-                    u_int32_t addrTemp;
-                    ato32(changeAddr->address, &addrTemp);
-                    addr.sin_addr.s_addr = htonl(addrTemp); 
-                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
-                } else {
-                    struct sockaddr_in6 addr;
-                    addr.sin6_family = AF_INET6;
-                    addr.sin6_port = ntohs(changeAddr->portNumber);
-                    XMEMCPY(addr.sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
-                    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
-                }
-            }
-            break;
-        default:
-            break;
+    for(i = 0; i < cih->nbrAddrs; i++) {
+        MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
+        if(ntohs(changeAddr->inetFamily) == AF_INET) {
+            struct sockaddr_in addr;
+            addr.sin_family = AF_INET;
+            addr.sin_port = ntohs(changeAddr->portNumber);
+            u_int32_t addrTemp;
+            ato32(changeAddr->address, &addrTemp);
+            addr.sin_addr.s_addr = htonl(addrTemp); 
+            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
+        } else {
+            struct sockaddr_in6 addr;
+            addr.sin6_family = AF_INET6;
+            addr.sin6_port = ntohs(changeAddr->portNumber);
+            XMEMCPY(addr.sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
+            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
+        }
     }
+
 #ifdef DEBUG_WOLFSSL
     int j;
     char namebuf[BUFSIZ];
     WOLFSSL_MSG("Remote IPs");
     for (j = 0; j < ma->nbrAddrs; j++) {
+        //XMEMSET(namebuf, 0, BUFSIZ);
         /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
         getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
-            namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
+            namebuf, sizeof(namebuf), NULL, 0, 0);
         WOLFSSL_MSG(namebuf);
     }
 #endif /* DEBUG_WOLFSSL */
@@ -7944,32 +7943,34 @@ int SendData(WOLFSSL* ssl, const void* data, int sz)
 }
 
 
-int SendChangeInterface(WOLFSSL* ssl, const struct sockaddr *addrs, int addr_count, int mode)
+int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isReply)
 {
     int i;
     size_t sz = sizeof(MPDtlsChangeInterfaceHeader)
-              + addr_count * sizeof(MPDtlsChangeInterfaceAddress);
+              + addrs->nbrAddrs * sizeof(MPDtlsChangeInterfaceAddress);
 
     byte output[sz];
 
     MPDtlsChangeInterfaceHeader *cih = (MPDtlsChangeInterfaceHeader*) output;
-    cih->mode        = (byte) mode;
-    cih->nbrAddrs    = (byte) addr_count;
+    cih->reply       = (byte) isReply;
+    cih->nbrAddrs    = (byte) addrs->nbrAddrs;
 
-    for (i = 0; i< addr_count ; i++){
+    for (i = 0; i< addrs->nbrAddrs ; i++){
+
+        struct sockaddr *current_addr = (struct sockaddr *)(addrs->addrs + i);
         MPDtlsChangeInterfaceAddress changeAddr;
-        changeAddr.inetFamily = htons(addrs[i].sa_family); //network order
+        changeAddr.inetFamily = htons(current_addr->sa_family); //network order
 
         //we do not want to transmit part of the memory
         bzero(changeAddr.address, sizeof(changeAddr.address));
-        if (addrs[i].sa_family == AF_INET) {
-              c32toa(htonl(((struct sockaddr_in *) addrs + i)->sin_addr.s_addr), changeAddr.address);
-            changeAddr.portNumber = htons(((struct sockaddr_in *) addrs + i)->sin_port);
+        if (current_addr->sa_family == AF_INET) {
+              c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr.address);
+            changeAddr.portNumber = htons(((struct sockaddr_in *) current_addr)->sin_port);
         } else {
             XMEMCPY(changeAddr.address,
-                    ((struct sockaddr_in6 *) addrs + i)->sin6_addr.s6_addr,
+                    ((struct sockaddr_in6 *) current_addr)->sin6_addr.s6_addr,
                     sizeof(struct in6_addr));
-            changeAddr.portNumber = htons(((struct sockaddr_in6 *) addrs + i)->sin6_port);
+            changeAddr.portNumber = htons(((struct sockaddr_in6 *) current_addr)->sin6_port);
         }
 
         XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader) + sizeof(MPDtlsChangeInterfaceAddress) * i,
