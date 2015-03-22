@@ -2234,10 +2234,9 @@ word16 TLSX_GetRequestSize(WOLFSSL* ssl)
 
         EC_VALIDATE_REQUEST(ssl, semaphore);
         STK_VALIDATE_REQUEST(ssl);
-
+        
         if (ssl->extensions)
             length += TLSX_GetSize(ssl->extensions, semaphore, 1);
-
         if (ssl->ctx && ssl->ctx->extensions)
             length += TLSX_GetSize(ssl->ctx->extensions, semaphore, 1);
 

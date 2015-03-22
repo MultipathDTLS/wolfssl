@@ -6628,8 +6628,8 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     for (j = 0; j < ma->nbrAddrs; j++) {
         //XMEMSET(namebuf, 0, BUFSIZ);
         /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
-        getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
-            namebuf, sizeof(namebuf), NULL, 0, 0);
+        getnameinfo((struct sockaddr *) (ma->addrs + j),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, 0);
         WOLFSSL_MSG(namebuf);
     }
 #endif /* DEBUG_WOLFSSL */
