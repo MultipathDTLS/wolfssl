@@ -7237,6 +7237,55 @@ int ProcessReply(WOLFSSL* ssl)
     }
 }
 
+#ifdef HAVE_HEARTBEAT
+
+int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload_length, const byte* payload)
+{
+    byte              *output;
+    word32             length, idx = RECORD_HEADER_SZ;
+    int                ret;
+
+#ifdef WOLFSSL_DTLS
+    if (ssl->options.dtls)
+        idx = DTLS_RECORD_HEADER_SZ;
+#endif
+
+    length = idx + HB_MSG_HEADER_SZ + payload_length + 20;
+
+    /* check for avalaible size */
+    if ((ret = CheckAvailableSize(ssl, length)) != 0)
+        return ret;
+
+    /* get ouput buffer */
+    output = ssl->buffers.outputBuffer.buffer +
+             ssl->buffers.outputBuffer.length;
+
+    AddRecordHeader(output, length, heartbeat, ssl);
+
+    /* now write to output */
+    HeartbeatMessageHeader *message;
+    message = (HeartbeatMessageHeader *)(output + idx);
+    message->type = type;
+    c16toa(payload_length, message->payload_length);
+
+    idx += HB_MSG_HEADER_SZ;
+
+    XMEMCPY(output + idx, payload, payload_length);
+
+    idx += payload_length;
+
+    /* then random */
+    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, 20);
+    if (ret != 0)
+        return ret;
+
+    ssl->heartbeatState = IN_FLIGHT;
+    ssl->buffers.outputBuffer.length += length;
+
+    return SendBuffered(ssl);
+}
+
+#endif /* HAVE_HEARTBEAT */
 
 int SendChangeCipher(WOLFSSL* ssl)
 {
