@@ -6604,7 +6604,16 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     
     for(i = 0; i < cih->nbrAddrs; i++) {
         MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
-        if(ntohs(changeAddr->inetFamily) == AF_INET) {
+        byte isIPv6 = 0;
+        int j;
+        for(j = 4; j< 16 ; j++) {
+            if(changeAddr->address[j]!=0) {
+                isIPv6 = 1;
+                break;
+            }
+        }
+
+        if(!isIPv6) {
             struct sockaddr_in addr;
             addr.sin_family = AF_INET;
             addr.sin_port = ntohs(changeAddr->portNumber);
@@ -6628,8 +6637,8 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     for (j = 0; j < ma->nbrAddrs; j++) {
         //XMEMSET(namebuf, 0, BUFSIZ);
         /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
-        getnameinfo((struct sockaddr *) ma->addrs + j,  sizeof(struct sockaddr_storage),
-            namebuf, sizeof(namebuf), NULL, 0, 0);
+        getnameinfo((struct sockaddr *) (ma->addrs + j),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, 0);
         WOLFSSL_MSG(namebuf);
     }
 #endif /* DEBUG_WOLFSSL */
@@ -8011,7 +8020,6 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 
         struct sockaddr *current_addr = (struct sockaddr *)(addrs->addrs + i);
         MPDtlsChangeInterfaceAddress changeAddr;
-        changeAddr.inetFamily = htons(current_addr->sa_family); //network order
 
         //we do not want to transmit part of the memory
         bzero(changeAddr.address, sizeof(changeAddr.address));
