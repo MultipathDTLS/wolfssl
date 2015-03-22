@@ -1309,7 +1309,7 @@ typedef enum {
     SESSION_TICKET         = 0x0023,
     HEARTBEAT              = 0x000f,
     SECURE_RENEGOTIATION   = 0xff01,
-    MULTIPATH_DTLS         = 0x0042
+    MULTIPATH_DTLS         = 0x002a
 } TLSX_Type;
 
 typedef struct TLSX {
