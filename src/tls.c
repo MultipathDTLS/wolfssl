@@ -2025,12 +2025,14 @@ int TLSX_UseMultiPathDTLS(TLSX** extensions, byte enabled)
     return SSL_SUCCESS;
 }
 
+#define MD_FREE_ALL(data)      XFREE(data, 0, DYNAMIC_TYPE_TLSX)
 #define MD_GET_SIZE(data)      HELLO_EXT_MP_DTLS_LEN
 #define MD_WRITE               TLSX_MultiPathDTLS_Write
 #define MD_PARSE               TLSX_MultiPathDTLS_Parse
 
 #else
 
+#define MD_FREE_ALL(data)
 #define MD_GET_SIZE(data)      0
 #define MD_WRITE(a, b)         0
 #define MD_PARSE(a, b, c, d)   0
@@ -2084,7 +2086,7 @@ void TLSX_FreeAll(TLSX* list)
                 break;
 
             case MULTIPATH_DTLS:
-                /* Nothing to do. */
+                MD_FREE_ALL(extension->data);
                 break;
         }
 
