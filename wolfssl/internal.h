@@ -737,6 +737,8 @@ enum Misc {
     HELLO_EXT_MP_DTLS_LEN = 1,  /* Length of the field to be carried in the extension */
     HELLO_EXT_MP_DTLS_SZ  = 5,  /* total length of the MPDTLS hello extension */
 
+    HB_MSG_HEADER_SZ      = 3,  /* Size of the Heartbeat Message header */
+
     DTLS_HANDSHAKE_HEADER_SZ = 12, /* normal + seq(2) + offset(3) + length(3) */
     DTLS_RECORD_HEADER_SZ    = 13, /* normal + epoch(2) + seq_num(6) */
     DTLS_HANDSHAKE_EXTRA     = 8,  /* diff from normal */
@@ -1434,18 +1436,28 @@ WOLFSSL_LOCAL int TLSX_UseSecureRenegotiation(TLSX** extensions);
 #ifdef HAVE_HEARTBEAT
 
 typedef enum HeartbeatMode {
-    PEER_ALLOWED_TO_SEND        = 1,
-    PEER_NOT_ALLOWED_TO_SEND    = 2
+    PEER_ALLOWED_TO_SEND        = 0x01,
+    PEER_NOT_ALLOWED_TO_SEND    = 0x02
 } HeartbeatMode;
 
 typedef enum HeartbeatMessageType {
-    HEARTBEAT_REQUEST   = 1,
-    HEARTBEAT_RESPONSE  = 2
+    HEARTBEAT_REQUEST   = 0x01,
+    HEARTBEAT_RESPONSE  = 0x02
 } HeartbeatMessageType;
 
+typedef enum HeartbeatState {
+    STATE_NULL          = 0,
+    IN_FLIGHT           = 1
+} HeartbeatState;
+
 typedef struct HeartbeatExtension {
-    HeartbeatMode mode;
+    byte mode;
 } HeartbeatExtension;
+
+typedef struct HeartbeatMessageHeader {
+    byte        type;
+    byte        payload_length[2];
+} HeartbeatMessageHeader;
 
 WOLFSSL_LOCAL int TLSX_UseHeartbeat(TLSX** extensions, HeartbeatMode mode);
 
@@ -2200,7 +2212,8 @@ struct WOLFSSL {
         SecureRenegotiation* secure_renegotiation; /* valid pointer indicates */
     #endif                                         /* user turned on */
     #ifdef HAVE_HEARTBEAT
-        HeartbeatMode peerMode;
+        HeartbeatMode       peerMode;
+        HeartbeatState      heartbeatState;
     #endif
     #if !defined(NO_WOLFSSL_CLIENT) && defined(HAVE_SESSION_TICKET)
         CallbackSessionTicket session_ticket_cb;
@@ -2298,7 +2311,8 @@ enum ContentType {
     change_cipher_spec = 20, 
     alert              = 21, 
     handshake          = 22, 
-    application_data   = 23, 
+    application_data   = 23,
+    heartbeat          = 24,
     change_interface   = 42         /* MPDTLS addition */
 };
 
@@ -2363,6 +2377,9 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 
 /* internal functions */
 WOLFSSL_LOCAL int SendChangeCipher(WOLFSSL*);
+#ifdef HAVE_HEARTBEAT
+    WOLFSSL_LOCAL int SendHeartbeatMessage(WOLFSSL*, HeartbeatMessageType, word16, const byte*);
+#endif
 WOLFSSL_LOCAL int SendData(WOLFSSL*, const void*, int);
 WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
 WOLFSSL_LOCAL int SendPacket(WOLFSSL*, const void*, int, int);

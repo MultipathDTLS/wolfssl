@@ -3376,15 +3376,18 @@ static int GetRecordHeader(WOLFSSL* ssl, const byte* input, word32* inOutIdx,
         case application_data:
         case alert:
         case change_interface:
+            /* haven't decrypted this record yet */
+            ssl->keys.decryptedCur = 0;
+            break;
+        case heartbeat:
+            /* this record is not encrypted */
+            ssl->keys.decryptedCur = 1;
             break;
         case no_type:
         default:
             WOLFSSL_MSG("Unknown Record Type");
             return UNKNOWN_RECORD_TYPE;
     }
-
-    /* haven't decrypted this record yet */
-    ssl->keys.decryptedCur = 0;
 
     return 0;
 }
@@ -6638,7 +6641,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
         //XMEMSET(namebuf, 0, BUFSIZ);
         /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
         getnameinfo((struct sockaddr *) (ma->addrs + j),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
-            NULL, 0, 0);
+            NULL, 0, NI_NUMERICHOST);
         WOLFSSL_MSG(namebuf);
     }
 #endif /* DEBUG_WOLFSSL */
@@ -6657,6 +6660,59 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 }
 #endif /* WOLFSSL_MPDTLS */
 
+
+#ifdef HAVE_HEARTBEAT
+/* process Heartbeat */
+static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word32 totalSz)
+{
+    int ret = 0;
+
+    /* make sure can read the message */
+    if (*inOutIdx + HB_MSG_HEADER_SZ > totalSz)
+        return BUFFER_E;
+
+    HeartbeatMessageHeader *message;
+    message = (HeartbeatMessageHeader *) &input[*inOutIdx];
+    *inOutIdx +=  HB_MSG_HEADER_SZ;
+
+    word16 payload_length;
+    ato16(message->payload_length, &payload_length);
+
+    if (*inOutIdx + payload_length > totalSz)
+        return BUFFER_E;
+
+    switch (message->type) {
+
+        case HEARTBEAT_RESPONSE:
+            // TODO: verify that the payload is the same of the request
+            break;
+
+        case HEARTBEAT_REQUEST:
+            ret = SendHeartbeatMessage(ssl, HEARTBEAT_RESPONSE, payload_length, input + *inOutIdx);
+            break;
+
+        default:
+            WOLFSSL_ERROR(UNKNOWN_HEARTBEAT_MODE_E);
+            /* Discard silently malformed packets */
+            break;
+    }
+    /* Pass payload */
+    *inOutIdx += payload_length;
+
+    /* Skip random padding */
+    word32 paddingSz = 0;
+    if (!ssl->options.dtls)
+        paddingSz = totalSz - HB_MSG_HEADER_SZ - RECORD_HEADER_SZ - payload_length;
+#ifdef WOLFSSL_DTLS
+    else
+        paddingSz = totalSz - HB_MSG_HEADER_SZ - DTLS_RECORD_HEADER_SZ - payload_length;
+#endif
+
+    *inOutIdx += paddingSz;
+
+    return ret;
+}
+#endif /* HAVE_HEARTBEAT */
 
 /* process alert, return level */
 static int DoAlert(WOLFSSL* ssl, byte* input, word32* inOutIdx, int* type,
@@ -7198,6 +7254,7 @@ int ProcessReply(WOLFSSL* ssl)
                         return FATAL_ERROR;
                     break;
 
+#ifdef WOLFSSL_MPDTLS
                 case change_interface:
                     WOLFSSL_MSG("got change INTERFACE");
                     if ((ret = DoChangeInterface(ssl,
@@ -7207,6 +7264,16 @@ int ProcessReply(WOLFSSL* ssl)
                         return ret;
                     }
                     break;
+#endif
+
+#ifdef HAVE_HEARTBEAT
+                case heartbeat:
+                    WOLFSSL_MSG("got HeartbeatMessage");
+                    DoHeartbeatMessage(ssl, ssl->buffers.inputBuffer.buffer,
+                                       &ssl->buffers.inputBuffer.idx,
+                                       ssl->buffers.inputBuffer.length);
+                    break;
+#endif
 
                 default:
                     WOLFSSL_ERROR(UNKNOWN_RECORD_TYPE);
@@ -7251,6 +7318,55 @@ int ProcessReply(WOLFSSL* ssl)
     }
 }
 
+#ifdef HAVE_HEARTBEAT
+
+int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload_length, const byte* payload)
+{
+    byte              *output;
+    word32             length, idx = RECORD_HEADER_SZ;
+    int                ret;
+
+#ifdef WOLFSSL_DTLS
+    if (ssl->options.dtls)
+        idx = DTLS_RECORD_HEADER_SZ;
+#endif
+
+    length = idx + HB_MSG_HEADER_SZ + payload_length + 20;
+
+    /* check for avalaible size */
+    if ((ret = CheckAvailableSize(ssl, length)) != 0)
+        return ret;
+
+    /* get ouput buffer */
+    output = ssl->buffers.outputBuffer.buffer +
+             ssl->buffers.outputBuffer.length;
+
+    AddRecordHeader(output, length - DTLS_RECORD_HEADER_SZ, heartbeat, ssl);
+
+    /* now write to output */
+    HeartbeatMessageHeader *message;
+    message = (HeartbeatMessageHeader *)(output + idx);
+    message->type = type;
+    c16toa(payload_length, message->payload_length);
+
+    idx += HB_MSG_HEADER_SZ;
+
+    XMEMCPY(output + idx, payload, payload_length);
+
+    idx += payload_length;
+
+    /* then random */
+    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, 20);
+    if (ret != 0)
+        return ret;
+
+    ssl->heartbeatState = IN_FLIGHT;
+    ssl->buffers.outputBuffer.length += length;
+
+    return SendBuffered(ssl);
+}
+
+#endif /* HAVE_HEARTBEAT */
 
 int SendChangeCipher(WOLFSSL* ssl)
 {
