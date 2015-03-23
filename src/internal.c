@@ -6644,6 +6644,11 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 #endif /* DEBUG_WOLFSSL */
 
     mpdtlsSyncSock(ssl);
+
+    //we need to send back a CIM if the reply bit is set to 1
+    if(cih->reply) {
+        SendChangeInterface(ssl, ssl->mpdtls_host, 0);
+    }
     
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
