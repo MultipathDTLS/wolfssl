@@ -2214,6 +2214,8 @@ struct WOLFSSL {
     #ifdef HAVE_HEARTBEAT
         HeartbeatMode       peerMode;
         HeartbeatState      heartbeatState;
+        byte*               heartbeatPayload;
+        word16              heartbeatPayloadLength;
     #endif
     #if !defined(NO_WOLFSSL_CLIENT) && defined(HAVE_SESSION_TICKET)
         CallbackSessionTicket session_ticket_cb;

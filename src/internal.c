@@ -6685,8 +6685,15 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
     switch (message->type) {
 
         case HEARTBEAT_RESPONSE:
-            // TODO: verify that the payload is the same of the request
-            ssl->heartbeatState = NULL_STATE;
+            if (payload_length == ssl->heartbeatPayloadLength
+             && XMEMCMP(ssl->heartbeatPayload, input + *inOutIdx, ssl->heartbeatPayloadLength) == 0) {
+                XFREE(ssl->heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
+                ssl->heartbeatPayload = NULL;
+                ssl->heartbeatPayloadLength = 0;
+                ssl->heartbeatState = NULL_STATE;   
+            } else {
+                WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
+            }
             break;
 
         case HEARTBEAT_REQUEST:
@@ -7328,6 +7335,10 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     word32             length, idx = RECORD_HEADER_SZ;
     int                ret;
 
+    if (ssl->heartbeatState == IN_FLIGHT) {
+        return HEARTBEAT_ALREADY_FLYING;
+    }
+
 #ifdef WOLFSSL_DTLS
     if (ssl->options.dtls)
         idx = DTLS_RECORD_HEADER_SZ;
@@ -7353,7 +7364,10 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     idx += HB_MSG_HEADER_SZ;
 
+    ssl->heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
+    XMEMCPY(ssl->heartbeatPayload, payload, payload_length);
     XMEMCPY(output + idx, payload, payload_length);
+    ssl->heartbeatPayloadLength = payload_length;
 
     idx += payload_length;
 
@@ -7362,7 +7376,8 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     if (ret != 0)
         return ret;
 
-    ssl->heartbeatState = IN_FLIGHT;
+    if (type == HEARTBEAT_REQUEST)
+        ssl->heartbeatState = IN_FLIGHT;
     ssl->buffers.outputBuffer.length += length;
 
     return SendBuffered(ssl);
@@ -8694,6 +8709,9 @@ const char* wolfSSL_ERR_reason_error_string(unsigned long e)
 
     case UNKNOWN_HEARTBEAT_MODE_E:
         return "Heartbeat Mode Error";
+
+    case HEARTBEAT_ALREADY_FLYING:
+        return "Heartbeat message already sent but not received back yet";
 
     default :
         return "unknown error number";

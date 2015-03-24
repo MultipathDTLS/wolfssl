@@ -133,7 +133,8 @@ enum wolfSSL_ErrorCodes {
 
     /* begin negotiation parameter errors */
     UNSUPPORTED_SUITE       = -500,        /* unsupported cipher suite */
-    MATCH_SUITE_ERROR       = -501         /* can't match cipher suite */
+    MATCH_SUITE_ERROR       = -501,        /* can't match cipher suite */
+    HEARTBEAT_ALREADY_FLYING= -502         /* Heartbeat already sent but not received back yet */
     /* end negotiation parameter errors only 10 for now */
     /* add strings to SetErrorString !!!!! */
 
