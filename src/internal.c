@@ -6686,6 +6686,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
 
         case HEARTBEAT_RESPONSE:
             // TODO: verify that the payload is the same of the request
+            ssl->heartbeatState = NULL_STATE;
             break;
 
         case HEARTBEAT_REQUEST:
