@@ -6609,8 +6609,9 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
         MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
         byte isIPv6 = 0;
         int j;
-        for(j = 4; j< 16 ; j++) {
-            if(changeAddr->address[j]!=0) {
+        for(j = 0; j< 12 ; j++) {
+            byte test = (j<10) ? 0 : 0xff;
+            if(changeAddr->address[j]!=test) {
                 isIPv6 = 1;
                 break;
             }
@@ -6621,7 +6622,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
             addr.sin_family = AF_INET;
             addr.sin_port = ntohs(changeAddr->portNumber);
             u_int32_t addrTemp;
-            ato32(changeAddr->address, &addrTemp);
+            ato32((changeAddr->address+12), &addrTemp);
             addr.sin_addr.s_addr = htonl(addrTemp); 
             InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
         } else {
@@ -8096,7 +8097,10 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
         //we do not want to transmit part of the memory
         bzero(changeAddr.address, sizeof(changeAddr.address));
         if (current_addr->sa_family == AF_INET) {
-              c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr.address);
+            //IPv4-Mapped IPv6 address -> see RFC4291
+              c16toa(0xffff,changeAddr.address+10);
+              c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr.address+12);
+
             changeAddr.portNumber = htons(((struct sockaddr_in *) current_addr)->sin_port);
         } else {
             XMEMCPY(changeAddr.address,
