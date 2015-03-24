@@ -1255,8 +1255,36 @@ typedef struct WOLFSSL_DTLS_CTX {
     
     void MpdtlsSocksInit(WOLFSSL*, MPDTLS_SOCKS**);
     void MpdtlsSocksFree(WOLFSSL*, MPDTLS_SOCKS**);
-    
-    
+
+    typedef struct MPDTLS_SENDER_STATS {
+    	int* 		packets_sent; //sequence number of packets sent
+    	int  		capacity; //capacity of the array (mimic arraylist)
+    	int 		nbr_packets_sent; //number of stored packets inside packets_sent
+    	long        forward_delay; //average forward delay         
+    	long 		loss_rate;
+    } MPDTLS_SENDER_STATS;
+
+    typedef struct MPDTLS_RECEIVER_STATS {
+    	int 	    	nbr_packets_received; //number of stored packets inside packets_sent
+    	int        		min_seq; //should be uint48 but wolfSSL is not considering 2 first bytes
+    	int 			max_seq; //maximum sequence number received so far
+    	long 			backward_delay; //average backward delay
+    } MPDTLS_RECEIVER_STATS;
+
+    typedef struct MPDTLS_FLOW {
+    	struct  				sockaddr_storage host;
+    	struct 					sockaddr_storage remote;
+    	int 					sock;
+    	MPDTLS_SENDER_STATS 	s_stats;
+    	MPDTLS_RECEIVER_STATS 	r_stats;
+    } MPDTLS_FLOW;
+
+    typedef struct MPDTLS_FLOWS {
+        int 			nbrFlows; /* Number of available flow */
+        int 			nextRound; /* Next flow for Round Robin sending (must be moved to scheduler logic) */
+    	MPDTLS_FLOW*    flows;
+    } MPDTLS_FLOWS;
+ 
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
     int mpdtlsIsSockPresent(WOLFSSL*, const struct sockaddr*, const struct sockaddr*);
