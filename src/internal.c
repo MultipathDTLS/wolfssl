@@ -3164,12 +3164,13 @@ int SendBuffered(WOLFSSL* ssl)
             ssl->buffers.dtlsCtx.peer.sa = NULL;
             ssl->buffers.dtlsCtx.peer.sz = 0;
 
-            MPDTLS_SOCKS *scks = ssl->mpdtls_socks;
-            if(scks->nextWriteRound == scks->nbrSocks)
-                scks->nextWriteRound = 0;
+            /* Round Robin scheduler, must be moved to a dedicated method */
+            MPDTLS_FLOWS *flows = ssl->mpdtls_flows;
+            if(flows->nextRound == flows->nbrFlows)
+                flows->nextRound = 0;
 
-            ssl->buffers.dtlsCtx.fd = scks->socks[scks->nextWriteRound];
-            scks->nextWriteRound++;
+            ssl->buffers.dtlsCtx.fd = flows->flows[flows->nextRound].sock;
+            flows->nextRound++;
 
             updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
         }
