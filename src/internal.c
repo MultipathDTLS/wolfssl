@@ -1986,6 +1986,22 @@ void mpdtlsRemoveFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, con
 
 }
 
+/**
+* return the flow associated to a particular socket sd, useful to upate stats
+* return NULL is no such flow exists
+*/
+MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd) {
+    int i;
+    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
+    for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++ ) {
+        if(flows[i].sock == sd) {
+            return &flows[i];
+        }
+    } 
+
+    return NULL;    
+}
+
 
 #endif
 
