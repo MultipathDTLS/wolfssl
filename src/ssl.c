@@ -359,7 +359,7 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
     if (n > 0) {
         //it's trigger by a change in the interfaces, we expect a reply
         SendChangeInterface(ssl, ssl->mpdtls_host, 1);
-        mpdtlsSyncSock(ssl);
+        //mpdtlsSyncSock(ssl); do sth smarter
     }
     return SSL_SUCCESS;
 }
@@ -392,7 +392,7 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
     if (n > 0) {
         //it's trigger by a change in the interfaces, we expect a reply
         SendChangeInterface(ssl, ssl->mpdtls_host, 1);
-        mpdtlsSyncSock(ssl);
+        //mpdtlsSyncSock(ssl); do sth smarter
     }
 
     return SSL_SUCCESS;

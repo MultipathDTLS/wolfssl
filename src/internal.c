@@ -1836,111 +1836,34 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 }
 
 /**
-* Test if one of the socket is bind to addrHost and connected to addrPeer
-* Return 0 if it's not found, -1 if error occured
-* return socket fd if it's present
+* Test if one flow is already present with host addrHost and remote addrPeer
+* Return -1 if it's not found, -2 if error occured
+* return flow id if it's present
 */
-int mpdtlsIsSockPresent(WOLFSSL* ssl, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
-    WOLFSSL_ENTER("Is sock present ?");
-    MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
-    struct sockaddr_storage comp1, comp2;
-    socklen_t sz1 = sizeof(struct sockaddr_storage);
-    socklen_t sz2 = sizeof(struct sockaddr_storage);
+int mpdtlsIsFlowPresent(WOLFSSL* ssl, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
+    WOLFSSL_ENTER("Is flow present ?");
+    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
     int i;
-    for (i = 0; i < ms->nbrSocks; i++) {
-        if (getsockname(ms->socks[i], (struct sockaddr*) &comp1, &sz1) != 0) {
-            WOLFSSL_MSG("ERROR ON getsockname");
-            return -1;
-        }
-        if (getpeername(ms->socks[i], (struct sockaddr*) &comp2, &sz2) != 0) {
-            WOLFSSL_MSG("ERROR ON getpeername");
-            return -1;
-        }
-        int ret = sockAddrEqualAddr(addrHost, (struct sockaddr*) &comp1)
-                + sockAddrEqualPort(addrHost, (struct sockaddr*) &comp1)
-                + sockAddrEqualAddr(addrPeer, (struct sockaddr*) &comp2)
-                + sockAddrEqualPort(addrPeer, (struct sockaddr*) &comp2);
+    for (i = 0; i < ssl->mpdtls_flows->nbrFlows; i++) {
+        struct sockaddr_storage host = flows[i].host;
+        struct sockaddr_storage remote = flows[i].remote;
+        int ret = sockAddrEqualAddr(addrHost, (struct sockaddr*) &host)
+                + sockAddrEqualPort(addrHost, (struct sockaddr*) &host)
+                + sockAddrEqualAddr(addrPeer, (struct sockaddr*) &remote)
+                + sockAddrEqualPort(addrPeer, (struct sockaddr*) &remote);
         if (ret < 0)
-            return -1;
+            return -2;
         if (ret == 4){
-            WOLFSSL_LEAVE("Is sock present ?",1);
-            return ms->socks[i];
+            WOLFSSL_LEAVE("Is flow present ?",i);
+            return i;
         }
     }
-    WOLFSSL_LEAVE("Is sock present ?",0);
-    return 0;
+    WOLFSSL_LEAVE("Is flow present ?",-1);
+    return -1;
 
 }
 
-/**
-* SyncFd : synchronize our host and remote address with our list of open socket
-* Will alter host and remote if it finds uncorrect addresses
-*
-* Returns 0 if everything went fine, -1 otherwise
-*/
-int mpdtlsSyncSock(WOLFSSL* ssl) {
-    WOLFSSL_ENTER("Sync Sock");
-    MPDTLS_ADDRS *mah = ssl->mpdtls_host;
-    MPDTLS_ADDRS *mar = ssl->mpdtls_remote;
-    struct sockaddr *hostaddr, *peeraddr;
-    int i,j;
-    int *finalSockTable = (int *) XMALLOC(sizeof(int) * (mah->nbrAddrs*mar->nbrAddrs), //maximum possible size
-                                ssl->heap, DYNAMIC_TYPE_SOCKADDR);
-    int socknum = 0;
-    for (i = 0; i < mah->nbrAddrs; i++) {
-        hostaddr = (struct sockaddr *) (mah->addrs + i);
-        for (j = 0; j < mar->nbrAddrs; j++) {
-            peeraddr = (struct sockaddr *) (mar->addrs + j);
-            int presentSock = mpdtlsIsSockPresent(ssl, hostaddr, peeraddr);
 
-            if (hostaddr->sa_family == peeraddr->sa_family
-             && presentSock == 0) {
-                int sock, ret;
-                ret = mpdtlsAddNewSock(ssl, hostaddr, peeraddr, &sock);
-                switch(ret) {
-                    case 0:
-                        //InsertSock(ssl, ssl->mpdtls_socks, sock); // Seems not needed anymore
-                        finalSockTable[socknum] = sock;
-                        socknum++;
-                        break; 
-                    case -1:
-                        return -1;
-                    case  -2:
-                        DeleteAddrbyIndex(ssl, mah, i);
-                        i--;
-                        break;
-                }
-            } else if (presentSock > 0) {
-                finalSockTable[socknum] = presentSock;
-                socknum++;
-            }
-        }
-    }
-
-    //clear existing sockets
-    MPDTLS_SOCKS *ms = ssl->mpdtls_socks;
-    for (i = 0; i < ms->nbrSocks; i++) {
-        int found = 0;
-        for (j = 0; j < socknum; j++) {
-            if (finalSockTable[j] == ms->socks[i]){
-                found = 1;
-                break;
-            }
-        }
-        if (found == 0) {
-            //we close the socket if it's not present anymore
-            close(ms->socks[i]);
-        }
-
-    }
-
-    //we replace the list of sockets
-    free(ms->socks);
-    ms->socks = finalSockTable;
-    ms->nbrSocks = socknum;
-
-    return 0;
-}
 
 /**
 * create a UDP socket
@@ -2023,7 +1946,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, cons
     ssl->mpdtls_flows->nbrFlows++;
     //we increase the size of the structure
     MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sizeof(MPDTLS_FLOW) * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
-                                ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
     MPDTLS_FLOW cur_flow = flows[ssl->mpdtls_flows->nbrFlows-1];
 
     //update the pointer
@@ -2036,6 +1959,31 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, cons
     cur_flow.sock = sd;
 
     return 0;
+}
+
+/**
+* Remove a flow if it exists
+* 
+*/
+void mpdtlsRemoveFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
+    WOLFSSL_ENTER("remove flow");
+    int i;
+    int index = mpdtlsIsFlowPresent(ssl, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
+
+    if(index < 0) //no flow was present
+        return;
+    MPDTLS_FLOW flow = ssl->mpdtls_flows->flows[index];
+    XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+    for(i=index; i<ssl->mpdtls_flows->nbrFlows-1;i++) {
+        XMEMCPY(ssl->mpdtls_flows->flows + i, ssl->mpdtls_flows->flows + i + 1, sizeof(MPDTLS_FLOW));
+    }
+
+    //reduce the space needed
+    ssl->mpdtls_flows->nbrFlows--;
+    ssl->mpdtls_flows->flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sizeof(MPDTLS_FLOW) * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
+                                ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
 }
 
 
@@ -6705,7 +6653,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     }
 #endif /* DEBUG_WOLFSSL */
 
-    mpdtlsSyncSock(ssl);
+    //mpdtlsSyncSock(ssl); do sth smarter
 
     //we need to send back a CIM if the reply bit is set to 1
     if(cih->reply) {
