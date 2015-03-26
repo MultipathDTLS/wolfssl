@@ -2007,6 +2007,38 @@ int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct
     return 0;
 }
 
+
+/*
+* return 0 is everything went fine
+* 1 otherwise
+* Add a new flow for the specified hostaddr and remoteaddr
+*/
+int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
+    WOLFSSL_ENTER("AddNewFLow");
+    int sd;
+    //we first verify if we can add a socket for these addresses
+    if(mpdtlsAddNewSock(ssl,(struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr,&sd) != 0) {
+        return 1;
+    }
+    ssl->mpdtls_flows->nbrFlows++;
+    //we increase the size of the structure
+    MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sizeof(MPDTLS_FLOW) * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
+                                ssl->heap, DYNAMIC_TYPE_SOCKADDR);
+    MPDTLS_FLOW cur_flow = flows[ssl->mpdtls_flows->nbrFlows-1];
+
+    //update the pointer
+    ssl->mpdtls_flows->flows = flows;
+
+    //we copy addresses
+    XMEMCPY(&cur_flow.host, hostaddr, sizeof(struct sockaddr_storage));
+    XMEMCPY(&cur_flow.remote, remoteaddr , sizeof(struct sockaddr_storage));
+    //and port
+    cur_flow.sock = sd;
+
+    return 0;
+}
+
+
 #endif
 
 
