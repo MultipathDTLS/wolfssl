@@ -3027,8 +3027,8 @@ retry:
         int i, result=0, maxfd = 0, sd;
         FD_ZERO(&recvfds);
         FD_ZERO(&errfds);
-        for (i=0; i< ssl->mpdtls_socks->nbrSocks;i++) {
-            sd = ssl->mpdtls_socks->socks[i];
+        for (i=0; i< ssl->mpdtls_flows->nbrFlows;i++) {
+            sd = ssl->mpdtls_flows->flows[i].sock;
             FD_SET(sd,&recvfds);
             FD_SET(sd,&errfds);
             if(sd > maxfd)
@@ -3038,11 +3038,9 @@ retry:
         result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
         WOLFSSL_LEAVE("Select", result);
         if (result!=0) {
-            for (i=0; i< ssl->mpdtls_socks->nbrSocks;i++) {
-                int index = (i+ ssl->mpdtls_socks->nextReadRound) % ssl->mpdtls_socks->nbrSocks;
-                sd = ssl->mpdtls_socks->socks[index];
+            for (i=0; i< ssl->mpdtls_flows->nbrFlows;i++) {
+                sd = ssl->mpdtls_flows->flows[i].sock;
                 if(FD_ISSET(sd,&recvfds)) {
-                    ssl->mpdtls_socks->nextReadRound = (index+1) % ssl->mpdtls_socks->nbrSocks;
                     ssl->buffers.dtlsCtx.fd = sd;
                     break;
                 }
@@ -3051,7 +3049,6 @@ retry:
                     goto retry;
                 }
             }
-            WOLFSSL_MSG("CHANGE THE SOCKET");
         } else { // TIME OUT 
             goto retry; 
         }
