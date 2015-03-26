@@ -411,7 +411,7 @@ int wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int fd)
 #ifdef DEBUG
 void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 {
-    int bufSz, i;
+    int bufSz, i,j;
     bufSz = ssl->mpdtls_flows->nbrFlows * 400;
     char buf[bufSz];
     MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
@@ -433,7 +433,16 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         sprintf(buf,"%sBackward delay : %ld \n",buf,flows[i].r_stats.backward_delay);
 
         sprintf(buf,"%s----- Sender Stats ----- \n",buf);
-        //todo
+        char seqbuf[flows[i].s_stats.nbr_packets_sent * 3 + 2];
+        sprintf(seqbuf,"[");
+        for(j = 0; j < flows[i].s_stats.nbr_packets_sent; j++) {
+            sprintf(seqbuf,"%s %d",seqbuf, flows[i].s_stats.packets_sent[j]);
+        }
+        sprintf(buf,"%sPackets sent : %s] \n",buf,seqbuf);
+        sprintf(buf,"%sForward delay : %ld \n",buf,flows[i].s_stats.forward_delay);
+        sprintf(buf,"%sLoss Rate : %f \n",buf,flows[i].s_stats.loss_rate);
+
+
         sprintf(buf,"%s---------------------------\n\n",buf);
     }
     WOLFSSL_MSG(buf);
