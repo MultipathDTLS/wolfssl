@@ -1689,6 +1689,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_socks));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
+    MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
 #endif /* WOLFSSL_MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1739,7 +1740,7 @@ void MpdtlsAddrsFree(WOLFSSL* ssl, MPDTLS_ADDRS** addr) {
 }
 
 
-/* Init struct MPDTLS addr */
+/* Init struct MPDTLS socks */
 void MpdtlsSocksInit(WOLFSSL* ssl, MPDTLS_SOCKS** socks) {
     *socks = (MPDTLS_SOCKS*) XMALLOC(sizeof(MPDTLS_SOCKS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
@@ -1749,13 +1750,37 @@ void MpdtlsSocksInit(WOLFSSL* ssl, MPDTLS_SOCKS** socks) {
     (*socks)->socks = NULL;
 }
 
-/* Free struct MPDTLS addr */
+/* Free struct MPDTLS socks */
 void MpdtlsSocksFree(WOLFSSL* ssl, MPDTLS_SOCKS** socks) {
     (void)ssl; // workaround compiler --unused-parameter
     XFREE((*socks)->socks, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     XFREE(*socks, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     *socks = NULL;
 }
+
+/* Init struct MPDTLS flows */
+void MpdtlsFlowsInit(WOLFSSL* ssl, MPDTLS_FLOWS** flows) {
+    *flows = (MPDTLS_FLOWS*) XMALLOC(sizeof(MPDTLS_FLOWS), 
+                                    ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    (*flows)->nbrFlows = 0;
+    (*flows)->nextRound = 0;
+    (*flows)->flows = NULL;
+}
+
+/* Free struct MPDTLS Flows */
+void MpdtlsFlowsFree(WOLFSSL* ssl, MPDTLS_FLOWS** flows) {
+    int i;
+    (void) ssl; //workaround compiler --unused-parameter
+    for(i = 0; i< (*flows)->nbrFlows; i++) {
+        MPDTLS_FLOW flow = (*flows)->flows[i];
+        XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    }
+
+    XFREE((*flows)->flows, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(*flows, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    *flows = NULL;
+}
+
 
 
 /*
@@ -2007,6 +2032,7 @@ void SSL_ResourceFree(WOLFSSL* ssl)
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_socks));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_pool));
+    MpdtlsFlowsFree(ssl, &(ssl->mpdtls_flows));
 #endif
 
 #ifndef NO_CERTS

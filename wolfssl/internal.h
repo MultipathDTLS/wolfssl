@@ -1272,18 +1272,21 @@ typedef struct WOLFSSL_DTLS_CTX {
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
-    	struct  				sockaddr_storage host;
-    	struct 					sockaddr_storage remote;
-    	int 					sock;
-    	MPDTLS_SENDER_STATS 	s_stats;
-    	MPDTLS_RECEIVER_STATS 	r_stats;
+    	struct  				sockaddr_storage host; //a flow is determined by the host
+    	struct 					sockaddr_storage remote; //and remote sockaddr (ip + port)
+    	int 					sock;   //reference the connected socket if it exists
+    	MPDTLS_SENDER_STATS 	s_stats; //stats updated when we send packets
+    	MPDTLS_RECEIVER_STATS 	r_stats; //stats updated when we receive packets
     } MPDTLS_FLOW;
 
     typedef struct MPDTLS_FLOWS {
         int 			nbrFlows; /* Number of available flow */
         int 			nextRound; /* Next flow for Round Robin sending (must be moved to scheduler logic) */
-    	MPDTLS_FLOW*    flows;
+    	MPDTLS_FLOW*    flows; //the collection of flow
     } MPDTLS_FLOWS;
+
+    void MpdtlsFlowsInit(WOLFSSL*, MPDTLS_FLOWS**);
+    void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
  
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
@@ -2205,6 +2208,7 @@ struct WOLFSSL {
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
     MPDTLS_SOCKS*   mpdtls_socks;       /* available sockets */
     MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
+    MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
