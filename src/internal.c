@@ -3170,6 +3170,8 @@ int SendBuffered(WOLFSSL* ssl)
 
             ssl->buffers.dtlsCtx.fd = scks->socks[scks->nextWriteRound];
             scks->nextWriteRound++;
+
+            updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
         }
 #endif /* WOLFSSL_MPDTLS */
 
@@ -7512,6 +7514,24 @@ void updateReceiverStats(WOLFSSL* ssl) {
         }else if(seqNumber < flow->r_stats.min_seq) {
             flow->r_stats.min_seq = seqNumber;
         }
+    }
+}
+
+void updateSenderStats(WOLFSSL* ssl, int fd) {
+    MPDTLS_FLOW* flow;
+    int seqNumber = ssl->keys.dtls_sequence_number;
+
+    flow = getFlowFromSocket(ssl, fd);
+
+    if (flow != NULL) {
+        if (flow->s_stats.capacity == flow->s_stats.nbr_packets_sent) {
+            int* newList = (int *)XREALLOC(flow->s_stats.packets_sent, flow->s_stats.capacity * 2 * sizeof(int), ssl->heap, DYNAMIC_TYPE_MPDTLS);
+            flow->s_stats.packets_sent = newList;
+            flow->s_stats.capacity = flow->s_stats.capacity * 2;
+        }
+
+        flow->s_stats.packets_sent[flow->s_stats.nbr_packets_sent] = seqNumber;
+        flow->s_stats.nbr_packets_sent++;
     }
 }
 #endif
