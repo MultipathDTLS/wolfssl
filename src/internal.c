@@ -1687,7 +1687,6 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 #ifdef WOLFSSL_MPDTLS
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
-    MpdtlsSocksInit(ssl, &(ssl->mpdtls_socks));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
 #endif /* WOLFSSL_MPDTLS */
@@ -2047,7 +2046,6 @@ void SSL_ResourceFree(WOLFSSL* ssl)
 #ifdef WOLFSSL_MPDTLS
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_remote));
     MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
-    MpdtlsSocksFree(ssl, &(ssl->mpdtls_socks));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsFree(ssl, &(ssl->mpdtls_flows));
 #endif

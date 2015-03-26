@@ -2211,7 +2211,6 @@ struct WOLFSSL {
 #ifdef WOLFSSL_MPDTLS
     MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
-    MPDTLS_SOCKS*   mpdtls_socks;       /* available sockets */
     MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
     MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
 #endif

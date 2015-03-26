@@ -225,7 +225,6 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
         socklen_t sz = sizeof(struct sockaddr_storage);
         socklen_t sz2 = sizeof(struct sockaddr_storage);
 
-        InsertSock(ssl, ssl->mpdtls_socks, fd);
 
         if (getpeername(fd, (struct sockaddr *) &cl1, &sz) == 0) {
             InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl1, sz);
@@ -397,16 +396,6 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
     }
 
     return SSL_SUCCESS;
-}
-
-int wolfSSL_mpdtls_add_fd(WOLFSSL* ssl, int fd)
-{
-    return InsertSock(ssl, ssl->mpdtls_socks, fd);
-}
-
-int wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int fd)
-{
-    return DeleteSock(ssl, ssl->mpdtls_socks, fd);
 }
 #ifdef DEBUG
 void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
