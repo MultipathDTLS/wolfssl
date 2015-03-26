@@ -2351,7 +2351,8 @@ enum ContentType {
     handshake          = 22, 
     application_data   = 23,
     heartbeat          = 24,
-    change_interface   = 42         /* MPDTLS addition */
+    change_interface   = 42,         /* MPDTLS addition */
+    feedback           = 43
 };
 
 
@@ -2404,6 +2405,17 @@ enum HandShakeType {
         byte                   address[16]; //ipv6 or ipv4 embedded inside ipv6
         u_int16_t              portNumber;
     } MPDtlsChangeInterfaceAddress;
+
+    typedef struct MPDtlsFeedback {
+        long                nbr_packets_received;
+        int                 min_seq;
+        int                 max_seq;
+        long                forward_delay;           
+    } MPDtlsFeedback;
+
+    typedef struct MPDtlsFeedbackAck {
+        int                 seq;
+    } MPDtlsFeedbackAck;
 #endif /* WOLFSSL_MPDTLS */
 
 static const byte client[SIZEOF_SENDER] = { 0x43, 0x4C, 0x4E, 0x54 };
