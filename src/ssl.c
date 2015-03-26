@@ -416,7 +416,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 
         sprintf(buf,"%s----- Receiver Stats ----- \n",buf);
         // stats info
-        sprintf(buf,"%sPackets received : %d \n",buf,flows[i].r_stats.nbr_packets_received);
+        sprintf(buf,"%sPackets received : %ld \n",buf,flows[i].r_stats.nbr_packets_received);
         sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq);
         sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq);
         sprintf(buf,"%sBackward delay : %ld \n",buf,flows[i].r_stats.backward_delay);

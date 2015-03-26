@@ -1265,10 +1265,12 @@ typedef struct WOLFSSL_DTLS_CTX {
     } MPDTLS_SENDER_STATS;
 
     typedef struct MPDTLS_RECEIVER_STATS {
-    	int 	    	nbr_packets_received; //number of stored packets inside packets_sent
+    	long 	    	nbr_packets_received; //number of stored packets inside packets_sent
     	int        		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
     	int 			max_seq;              //maximum sequence number received so far
     	long 			backward_delay;       //average backward delay
+        int             threshold;            //after how many packets must we send a feedback ?
+        int             last_feedback;        //sequence number of the last feedback we sent
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
@@ -2431,7 +2433,6 @@ WOLFSSL_LOCAL int SendChangeCipher(WOLFSSL*);
     WOLFSSL_LOCAL int SendHeartbeatMessage(WOLFSSL*, HeartbeatMessageType, word16, const byte*);
 #endif
 WOLFSSL_LOCAL int SendData(WOLFSSL*, const void*, int);
-WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
 WOLFSSL_LOCAL int SendPacket(WOLFSSL*, const void*, int, int);
 WOLFSSL_LOCAL int SendCertificate(WOLFSSL*);
 WOLFSSL_LOCAL int SendCertificateRequest(WOLFSSL*);
@@ -2508,6 +2509,8 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
 #endif /* WOLFSSL_DTLS */
 
 #ifdef WOLFSSL_MPDTLS
+    WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
+    WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, const MPDTLS_FLOW*);
     WOLFSSL_LOCAL int  InsertSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int  DeleteSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int  DeleteSockbyIndex(WOLFSSL* ssl, MPDTLS_SOCKS*, int);

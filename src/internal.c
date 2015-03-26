@@ -1971,6 +1971,9 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->r_stats.max_seq = 0;
     cur_flow->r_stats.nbr_packets_received = 0;
     cur_flow->r_stats.backward_delay = -1;
+    cur_flow->r_stats.threshold = 2; //magic number -> must be evaluated
+    cur_flow->r_stats.last_feedback = 0; //no last feedback
+
 
     cur_flow->s_stats.capacity = 10;
     cur_flow->s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
@@ -3416,6 +3419,7 @@ static int GetRecordHeader(WOLFSSL* ssl, const byte* input, word32* inOutIdx,
         case change_cipher_spec:
         case application_data:
         case alert:
+        case feedback:
         case change_interface:
             /* haven't decrypted this record yet */
             ssl->keys.decryptedCur = 0;
@@ -6700,6 +6704,34 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 
     return 0;
 }
+
+static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
+    int ret;
+    MPDtlsFeedback *feed;
+    if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
+        WOLFSSL_ERROR(ret);
+        return ret;
+    }
+    byte* data = ssl->buffers.clearOutputBuffer.buffer;
+    word32 length = ssl->buffers.clearOutputBuffer.length;
+
+    if (length != sizeof(MPDtlsFeedback)) {
+        WOLFSSL_ERROR(BUFFER_E);
+        return BUFFER_E;
+    }
+    feed = (MPDtlsFeedback *) data;
+
+    int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl,fd);
+
+    //update the forward delay
+    flow->s_stats.forward_delay = feed->forward_delay;
+
+    //TO DO compute the lost rate
+
+    return 0;
+}
+
 #endif /* WOLFSSL_MPDTLS */
 
 
@@ -7319,6 +7351,15 @@ int ProcessReply(WOLFSSL* ssl)
                         return ret;
                     }
                     break;
+                case feedback:
+                    WOLFSSL_MSG("Received Feedback");
+                     if ((ret = DoFeedback(ssl, ssl->buffers.inputBuffer.buffer,
+                                            &ssl->buffers.inputBuffer.idx)) != 0) {
+                        WOLFSSL_ERROR(ret);
+                        return ret;
+                    }
+
+                    break;
 #endif
 
 #ifdef HAVE_HEARTBEAT
@@ -7514,6 +7555,13 @@ void updateReceiverStats(WOLFSSL* ssl) {
         }
         if(seqNumber < flow->r_stats.min_seq) {
             flow->r_stats.min_seq = seqNumber;
+        }
+
+        //we must send a feedback, the threshold has been reached
+        //some mechanism may be needed to ensure we do not send a feedback directly after this one
+        if(flow->r_stats.nbr_packets_received >= flow->r_stats.threshold) {
+            SendFeedback(ssl, flow);
+            flow->r_stats.threshold *= 2; //temporary workaround
         }
     }
 }
@@ -8175,7 +8223,7 @@ int SendData(WOLFSSL* ssl, const void* data, int sz)
     return SendPacket(ssl, data, sz, application_data);
 }
 
-
+#ifdef WOLFSSL_MPDTLS
 int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isReply)
 {
     int i;
@@ -8214,6 +8262,20 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 
     return SendPacket(ssl, (void*) output, sz, change_interface);
 }
+
+int SendFeedback(WOLFSSL *ssl, const MPDTLS_FLOW *flow) {
+    WOLFSSL_MSG("SEND FEEDBACK");
+    size_t sz = sizeof(MPDtlsFeedback);
+    MPDtlsFeedback feed;
+    feed.nbr_packets_received = flow->r_stats.nbr_packets_received;
+    feed.min_seq = flow->r_stats.min_seq;
+    feed.max_seq = flow->r_stats.max_seq;
+    feed.forward_delay = flow->r_stats.backward_delay;
+
+    return SendPacket(ssl, (void*) &feed, sz, feedback);
+}
+#endif 
+/* MPDTLS */
 
 
 int SendPacket(WOLFSSL* ssl, const void* data, int sz, int type)
