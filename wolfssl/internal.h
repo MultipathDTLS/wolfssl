@@ -1288,7 +1288,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsFlowsInit(WOLFSSL*, MPDTLS_FLOWS**);
     void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
 
-    int mpdtlsAddNewFlow(WOLFSSL *, const struct sockaddr_storage*, const struct sockaddr_storage*, int sock);
+    int mpdtlsAddNewFlow(WOLFSSL *, const struct sockaddr*, int, const struct sockaddr*, int, int sock);
     void mpdtlsRemoveFlow(WOLFSSL *, const struct sockaddr_storage*, const struct sockaddr_storage*);
     MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd);
     void updateReceiverStats(WOLFSSL*);

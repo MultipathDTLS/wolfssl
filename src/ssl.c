@@ -241,7 +241,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
             }
             if(valid) {
                 InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
-                mpdtlsAddNewFlow(ssl, &cl1, &cl2, fd);
+                mpdtlsAddNewFlow(ssl, (struct sockaddr*) &cl1, sz, (struct sockaddr*) &cl2, sz2, fd);
             }
         }
 
@@ -420,21 +420,21 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         sprintf(buf,"---- Stats for Flow N° %d ---- \n",i);
         getnameinfo((struct sockaddr *) &(flows[i].host),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
-        sprintf(buf,"IP src : %s \n",namebuf);
+        sprintf(buf,"%sIP src : %s \n",buf,namebuf);
         getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
-        sprintf(buf,"IP dst : %s \n",namebuf);
+        sprintf(buf,"%sIP dst : %s \n",buf,namebuf);
 
-        sprintf(buf,"----- Receiver Stats ----- \n");
+        sprintf(buf,"%s----- Receiver Stats ----- \n",buf);
         // stats info
-        sprintf(buf,"Packets received : %d \n",flows[i].r_stats.nbr_packets_received);
-        sprintf(buf,"Min_Seq received : %d \n",flows[i].r_stats.min_seq);
-        sprintf(buf,"Max_Seq received : %d \n",flows[i].r_stats.max_seq);
-        sprintf(buf,"Backward delay : %ld \n",flows[i].r_stats.backward_delay);
+        sprintf(buf,"%sPackets received : %d \n",buf,flows[i].r_stats.nbr_packets_received);
+        sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq);
+        sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq);
+        sprintf(buf,"%sBackward delay : %ld \n",buf,flows[i].r_stats.backward_delay);
 
-        sprintf(buf,"----- Sender Stats ----- \n");
+        sprintf(buf,"%s----- Sender Stats ----- \n",buf);
         //todo
-        sprintf(buf,"---------------------------\n\n");
+        sprintf(buf,"%s---------------------------\n\n",buf);
     }
     WOLFSSL_MSG(buf);
 }
@@ -481,6 +481,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
             if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
                 InsertAddr(ssl, ssl->mpdtls_host, host, hostSz);
                 //we must add a flow here as well
+                mpdtlsAddNewFlow(ssl, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl));
             }
         } else {
             WOLFSSL_MSG("Error on connect in set peer");

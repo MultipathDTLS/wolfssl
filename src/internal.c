@@ -1937,12 +1937,13 @@ int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct
 * Add a new flow for the specified hostaddr and remoteaddr
 * if socket is 0, we create a new one, otherwise we take this one (must be connected with the supplied addresses)
 */
-int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int sock) {
+int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, const struct sockaddr* remoteaddr, int rSz, int sock) {
     WOLFSSL_ENTER("AddNewFLow");
+
     int sd;
     //we first verify if we can add a socket for these addresses
     if(sock == 0) {
-        if(mpdtlsAddNewSock(ssl,(struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr,&sd) != 0) {
+        if(mpdtlsAddNewSock(ssl, hostaddr, remoteaddr,&sd) != 0) {
             return 1;
         }
     } else {
@@ -1950,31 +1951,33 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, cons
     }
     ssl->mpdtls_flows->nbrFlows++;
     //we increase the size of the structure
-    MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sizeof(MPDTLS_FLOW) * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
+    int sz = sizeof(MPDTLS_FLOW);
+    MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sz * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    MPDTLS_FLOW cur_flow = flows[ssl->mpdtls_flows->nbrFlows-1];
+    MPDTLS_FLOW *cur_flow = &(flows[ssl->mpdtls_flows->nbrFlows-1]);
+
+    XMEMSET(cur_flow,0,sz);
 
     //update the pointer
     ssl->mpdtls_flows->flows = flows;
 
     //we copy addresses
-    XMEMCPY(&cur_flow.host, hostaddr, sizeof(struct sockaddr_storage));
-    XMEMCPY(&cur_flow.remote, remoteaddr , sizeof(struct sockaddr_storage));
+    XMEMCPY(&cur_flow->host, hostaddr, hSz);
+    XMEMCPY(&cur_flow->remote, remoteaddr , rSz);
     //and port
-    cur_flow.sock = sd;
+    cur_flow->sock = sd;
 
     //initialize stats
-    cur_flow.r_stats.min_seq = INT_MAX;
-    cur_flow.r_stats.max_seq = 0;
-    cur_flow.r_stats.nbr_packets_received = 0;
-    cur_flow.r_stats.backward_delay = -1;
+    cur_flow->r_stats.min_seq = INT_MAX;
+    cur_flow->r_stats.max_seq = 0;
+    cur_flow->r_stats.nbr_packets_received = 0;
+    cur_flow->r_stats.backward_delay = -1;
 
-    cur_flow.s_stats.capacity = 10;
-    cur_flow.s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    cur_flow.s_stats.nbr_packets_sent = 0;
-    cur_flow.s_stats.forward_delay = 0;
-    cur_flow.s_stats.loss_rate = 0;
-
+    cur_flow->s_stats.capacity = 10;
+    cur_flow->s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    cur_flow->s_stats.nbr_packets_sent = 0;
+    cur_flow->s_stats.forward_delay = 0;
+    cur_flow->s_stats.loss_rate = 0;
 
     return 0;
 }
@@ -7173,7 +7176,12 @@ int ProcessReply(WOLFSSL* ssl)
             }
 
             WOLFSSL_MSG("received record layer msg");
-
+            #ifdef WOLFSSL_MPDTLS
+            //update stats
+            if(ssl->options.handShakeDone && ssl->options.mpdtls) {
+                updateReceiverStats(ssl);
+            }
+            #endif
             switch (ssl->curRL.type) {
                 case handshake :
                     /* debugging in DoHandShakeMsg */
@@ -7278,10 +7286,6 @@ int ProcessReply(WOLFSSL* ssl)
 
                 case application_data:
                     WOLFSSL_MSG("got app DATA");
-                    #ifdef WOLFSSL_MPDTLS
-                    //update stats
-                    updateReceiverStats(ssl);
-                    #endif
                     if ((ret = DoApplicationData(ssl,
                                                 ssl->buffers.inputBuffer.buffer,
                                                &ssl->buffers.inputBuffer.idx))
@@ -7511,7 +7515,8 @@ void updateReceiverStats(WOLFSSL* ssl) {
         flow->r_stats.nbr_packets_received++;
         if(seqNumber > flow->r_stats.max_seq) {
             flow->r_stats.max_seq = seqNumber;
-        }else if(seqNumber < flow->r_stats.min_seq) {
+        }
+        if(seqNumber < flow->r_stats.min_seq) {
             flow->r_stats.min_seq = seqNumber;
         }
     }
