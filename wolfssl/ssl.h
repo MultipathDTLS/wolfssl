@@ -344,6 +344,7 @@ WOLFSSL_API int  wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char*);
 WOLFSSL_API int  wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *);
 WOLFSSL_API int  wolfSSL_mpdtls_add_fd(WOLFSSL* ssl, int);
 WOLFSSL_API int  wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int);
+WOLFSSL_API void wolfSSL_mpdtls_stats(WOLFSSL*);
 
 WOLFSSL_API int   wolfSSL_ERR_GET_REASON(int err);
 WOLFSSL_API char* wolfSSL_ERR_error_string(unsigned long,char*);

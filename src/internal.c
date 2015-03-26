@@ -1935,13 +1935,18 @@ int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct
 * return 0 is everything went fine
 * 1 otherwise
 * Add a new flow for the specified hostaddr and remoteaddr
+* if socket is 0, we create a new one, otherwise we take this one (must be connected with the supplied addresses)
 */
-int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
+int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int sock) {
     WOLFSSL_ENTER("AddNewFLow");
     int sd;
     //we first verify if we can add a socket for these addresses
-    if(mpdtlsAddNewSock(ssl,(struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr,&sd) != 0) {
-        return 1;
+    if(sock == 0) {
+        if(mpdtlsAddNewSock(ssl,(struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr,&sd) != 0) {
+            return 1;
+        }
+    } else {
+        sd = sock;
     }
     ssl->mpdtls_flows->nbrFlows++;
     //we increase the size of the structure
@@ -1957,6 +1962,19 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, cons
     XMEMCPY(&cur_flow.remote, remoteaddr , sizeof(struct sockaddr_storage));
     //and port
     cur_flow.sock = sd;
+
+    //initialize stats
+    cur_flow.r_stats.min_seq = INT_MAX;
+    cur_flow.r_stats.max_seq = 0;
+    cur_flow.r_stats.nbr_packets_received = 0;
+    cur_flow.r_stats.backward_delay = -1;
+
+    cur_flow.s_stats.capacity = 10;
+    cur_flow.s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    cur_flow.s_stats.nbr_packets_sent = 0;
+    cur_flow.s_stats.forward_delay = 0;
+    cur_flow.s_stats.loss_rate = 0;
+
 
     return 0;
 }
@@ -7258,6 +7276,10 @@ int ProcessReply(WOLFSSL* ssl)
 
                 case application_data:
                     WOLFSSL_MSG("got app DATA");
+                    #ifdef WOLFSSL_MPDTLS
+                    //update stats
+                    updateReceiverStats(ssl);
+                    #endif
                     if ((ret = DoApplicationData(ssl,
                                                 ssl->buffers.inputBuffer.buffer,
                                                &ssl->buffers.inputBuffer.idx))
@@ -7475,6 +7497,24 @@ int SendChangeCipher(WOLFSSL* ssl)
     else
         return SendBuffered(ssl);
 }
+
+#ifdef WOLFSSL_MPDTLS
+void updateReceiverStats(WOLFSSL* ssl) {
+    MPDTLS_FLOW* flow;
+    int seqNumber = ssl->keys.dtls_state.curSeq;
+    int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
+
+    flow = getFlowFromSocket(ssl,fd);
+    if(flow!=NULL) {
+        flow->r_stats.nbr_packets_received++;
+        if(seqNumber > flow->r_stats.max_seq) {
+            flow->r_stats.max_seq = seqNumber;
+        }else if(seqNumber < flow->r_stats.min_seq) {
+            flow->r_stats.min_seq = seqNumber;
+        }
+    }
+}
+#endif
 
 
 #ifndef NO_OLD_TLS

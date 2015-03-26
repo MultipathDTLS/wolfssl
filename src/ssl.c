@@ -221,26 +221,27 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
     #endif
 
     #ifdef WOLFSSL_MPDTLS
-        struct sockaddr_storage cl;
+        struct sockaddr_storage cl1, cl2;
         socklen_t sz = sizeof(struct sockaddr_storage);
         socklen_t sz2 = sizeof(struct sockaddr_storage);
 
         InsertSock(ssl, ssl->mpdtls_socks, fd);
 
-        if (getpeername(fd, (struct sockaddr *) &cl, &sz) == 0) {
-            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl, sz);
+        if (getpeername(fd, (struct sockaddr *) &cl1, &sz) == 0) {
+            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl1, sz);
         }
         
-        if (getsockname(fd, (struct sockaddr *) &cl, &sz2) == 0) {
+        if (getsockname(fd, (struct sockaddr *) &cl2, &sz2) == 0) {
             //we discard non connected socket
             int valid = 1;
-            if(cl.ss_family == AF_INET){
-                valid = ((struct sockaddr_in*) &cl)->sin_port;
-            }else if(cl.ss_family == AF_INET6){
-                valid = ((struct sockaddr_in6*) &cl)->sin6_port;
+            if(cl2.ss_family == AF_INET){
+                valid = ((struct sockaddr_in*) &cl2)->sin_port;
+            }else if(cl2.ss_family == AF_INET6){
+                valid = ((struct sockaddr_in6*) &cl2)->sin6_port;
             }
             if(valid) {
-                InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl, sz2);
+                InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
+                mpdtlsAddNewFlow(ssl, &cl1, &cl2, fd);
             }
         }
 
@@ -407,6 +408,37 @@ int wolfSSL_mpdtls_del_fd(WOLFSSL* ssl, int fd)
 {
     return DeleteSock(ssl, ssl->mpdtls_socks, fd);
 }
+#ifdef DEBUG
+void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
+{
+    int bufSz, i;
+    bufSz = ssl->mpdtls_flows->nbrFlows * 400;
+    char buf[bufSz];
+    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
+    for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++) {
+        char namebuf[50];
+        sprintf(buf,"---- Stats for Flow N° %d ---- \n",i);
+        getnameinfo((struct sockaddr *) &(flows[i].host),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, NI_NUMERICHOST);
+        sprintf(buf,"IP src : %s \n",namebuf);
+        getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, NI_NUMERICHOST);
+        sprintf(buf,"IP dst : %s \n",namebuf);
+
+        sprintf(buf,"----- Receiver Stats ----- \n");
+        // stats info
+        sprintf(buf,"Packets received : %d \n",flows[i].r_stats.nbr_packets_received);
+        sprintf(buf,"Min_Seq received : %d \n",flows[i].r_stats.min_seq);
+        sprintf(buf,"Max_Seq received : %d \n",flows[i].r_stats.max_seq);
+        sprintf(buf,"Backward delay : %ld \n",flows[i].r_stats.backward_delay);
+
+        sprintf(buf,"----- Sender Stats ----- \n");
+        //todo
+        sprintf(buf,"---------------------------\n\n");
+    }
+    WOLFSSL_MSG(buf);
+}
+#endif
 
 #endif
 
@@ -448,6 +480,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
             
             if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
                 InsertAddr(ssl, ssl->mpdtls_host, host, hostSz);
+                //we must add a flow here as well
             }
         } else {
             WOLFSSL_MSG("Error on connect in set peer");
