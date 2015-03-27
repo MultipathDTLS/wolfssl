@@ -2354,7 +2354,8 @@ enum ContentType {
     application_data   = 23,
     heartbeat          = 24,
     change_interface   = 42,         /* MPDTLS addition */
-    feedback           = 43
+    feedback           = 43,
+    feedback_ack       = 44
 };
 
 
@@ -2510,7 +2511,8 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
 
 #ifdef WOLFSSL_MPDTLS
     WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
-    WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, const MPDTLS_FLOW*);
+    WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
+    WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, int seq);
     WOLFSSL_LOCAL int  InsertSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int  DeleteSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int  DeleteSockbyIndex(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
