@@ -6706,7 +6706,8 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 }
 
 static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
-    int ret;
+    int ret,i, real_pckts_sent;
+    int last_index, j;
     MPDtlsFeedback *feed;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
@@ -6727,7 +6728,37 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     //update the forward delay
     flow->s_stats.forward_delay = feed->forward_delay;
 
-    //TO DO compute the lost rate
+    //first we make sure this packet is recent enough and we haven't consider the computation yet
+
+    if(flow->s_stats.nbr_packets_sent > 0 && flow->s_stats.packets_sent[0] <= feed->min_seq) {
+
+        //compute the loss rate and remove old packets
+        //we consider all packets before max_seq as considered
+        real_pckts_sent = 0;
+        last_index = 0;
+        for(i=0; i < flow->s_stats.nbr_packets_sent ; i++) {
+            if(flow->s_stats.packets_sent[i] <= feed->max_seq) {
+                real_pckts_sent++;
+                last_index = i;
+            } 
+        }
+
+        flow->s_stats.loss_rate = (real_pckts_sent - feed->nbr_packets_received) / real_pckts_sent;
+
+        //remove the packets used in the computation
+        j = 0;
+        for(i=last_index; i< flow->s_stats.nbr_packets_sent; i++) {
+            flow->s_stats.packets_sent[j] = flow->s_stats.packets_sent[i];
+            j++;
+        }
+
+        flow->s_stats.nbr_packets_sent -= real_pckts_sent;
+        flow->s_stats.packets_sent = (int *) XREALLOC(flow->s_stats.packets_sent, 
+            sizeof(int)* flow->s_stats.nbr_packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+
+    }
+
+
 
     //we send a FeedbackAck
     int seqNumber = ssl->keys.dtls_state.curSeq;; //last sequence number received
@@ -6762,7 +6793,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     if(ack->seq == flow->r_stats.last_feedback) {
         //then we can reset the stats
         flow->r_stats.nbr_packets_received = 0;
-        flow->r_stats.min_seq = flow->r_stats.max_seq;
+        flow->r_stats.min_seq =  INT_MAX;
         flow->r_stats.max_seq = 0;
 
         //we keep the forward delay as it is
