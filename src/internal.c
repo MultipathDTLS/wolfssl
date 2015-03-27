@@ -6797,6 +6797,10 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         flow->r_stats.max_seq = 0;
 
         //we keep the forward delay as it is
+
+        // We reset the "timer"
+        flow->r_stats.threshold = FEEDBACK_TX;
+        flow->r_stats.feedbackStatus = NULL_STATE;
     }
     //otherwise we wait for another ack 
     return 0;
@@ -7421,6 +7425,7 @@ int ProcessReply(WOLFSSL* ssl)
                         return ret;
                     }
                     break;
+
                 case feedback:
                     WOLFSSL_MSG("Received Feedback");
                      if ((ret = DoFeedback(ssl, ssl->buffers.inputBuffer.buffer,
@@ -7428,8 +7433,8 @@ int ProcessReply(WOLFSSL* ssl)
                         WOLFSSL_ERROR(ret);
                         return ret;
                     }
-
                     break;
+
                 case feedback_ack:
                     WOLFSSL_MSG("Received Feedback Ack");
                      if ((ret = DoFeedbackAck(ssl, ssl->buffers.inputBuffer.buffer,
@@ -7639,9 +7644,10 @@ void updateReceiverStats(WOLFSSL* ssl) {
 
         //we must send a feedback, the threshold has been reached
         //some mechanism may be needed to ensure we do not send a feedback directly after this one
-        if(flow->r_stats.nbr_packets_received >= flow->r_stats.threshold) {
+        if(flow->r_stats.feedbackStatus == NULL_STATE && flow->r_stats.threshold <= 0) {
             SendFeedback(ssl, flow);
-            flow->r_stats.threshold *= 2; //temporary workaround
+        } else {
+            flow->r_stats.threshold--;
         }
     }
 }
@@ -8355,6 +8361,9 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     //we remember the sequence number
     int seqNumber = ssl->keys.dtls_sequence_number;
     flow->r_stats.last_feedback = seqNumber;
+
+    flow->r_stats.feedbackStatus = IN_FLIGHT;
+    flow->r_stats.threshold = FEEDBACK_RTX;
 
     return SendPacket(ssl, (void*) &feed, sz, feedback);
 }

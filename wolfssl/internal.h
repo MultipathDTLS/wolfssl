@@ -884,6 +884,11 @@ enum states {
 };
 
 
+typedef enum MessageState {
+    STATE_NULL          = 0,
+    IN_FLIGHT           = 1
+} MessageState;
+
 #if defined(__GNUC__)
     #define WOLFSSL_PACK __attribute__ ((packed))
 #else
@@ -1256,6 +1261,9 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsSocksInit(WOLFSSL*, MPDTLS_SOCKS**);
     void MpdtlsSocksFree(WOLFSSL*, MPDTLS_SOCKS**);
 
+    #define FEEDBACK_TX  5
+    #define FEEDBACK_RTX 2
+
     typedef struct MPDTLS_SENDER_STATS {
     	int* 		packets_sent;       //sequence number of packets sent
     	int  		capacity;           //capacity of the array (mimic arraylist)
@@ -1271,6 +1279,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	long 			backward_delay;       //average backward delay
         int             threshold;            //after how many packets must we send a feedback ?
         int             last_feedback;        //sequence number of the last feedback we sent
+        MessageState    feedback_status;
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
@@ -1482,11 +1491,6 @@ typedef enum HeartbeatMessageType {
     HEARTBEAT_REQUEST   = 0x01,
     HEARTBEAT_RESPONSE  = 0x02
 } HeartbeatMessageType;
-
-typedef enum HeartbeatState {
-    STATE_NULL          = 0,
-    IN_FLIGHT           = 1
-} HeartbeatState;
 
 typedef struct HeartbeatExtension {
     byte mode;
@@ -2251,7 +2255,7 @@ struct WOLFSSL {
     #endif                                         /* user turned on */
     #ifdef HAVE_HEARTBEAT
         HeartbeatMode       peerMode;
-        HeartbeatState      heartbeatState;
+        MessageState        heartbeatState;
         byte*               heartbeatPayload;
         word16              heartbeatPayloadLength;
     #endif
