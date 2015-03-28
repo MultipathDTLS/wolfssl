@@ -382,6 +382,9 @@ int InitSSL_Ctx(WOLFSSL_CTX* ctx, WOLFSSL_METHOD* method)
             ctx->CBIORecv   = EmbedReceiveFrom;
             ctx->CBIOSend   = EmbedSendTo;
             ctx->CBIOCookie = EmbedGenerateCookie;
+        #ifdef WOLFSSL_MPDTLS
+            ctx->CBIOSchedule = EmbedSchedulerRoundRobin;
+        #endif
         }
     #endif
 #endif /* WOLFSSL_USER_IO */
@@ -3160,20 +3163,20 @@ int SendBuffered(WOLFSSL* ssl)
 
     while (ssl->buffers.outputBuffer.length > 0) {
 #ifdef WOLFSSL_MPDTLS
-        if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE && ssl->mpdtls_remote->nbrAddrs > 0) {
+        if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE) {
             /*we use only connected sockets */
             ssl->buffers.dtlsCtx.peer.sa = NULL;
             ssl->buffers.dtlsCtx.peer.sz = 0;
 
-            /* Round Robin scheduler, must be moved to a dedicated method */
-            MPDTLS_FLOWS *flows = ssl->mpdtls_flows;
-            if(flows->nextRound == flows->nbrFlows)
-                flows->nextRound = 0;
-
-            ssl->buffers.dtlsCtx.fd = flows->flows[flows->nextRound].sock;
-            flows->nextRound++;
-            updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
+            if (ssl->mpdtls_pref_flow != NULL) {
+                ssl->buffers.dtlsCtx.fd = ssl->mpdtls_pref_flow->sock;
+                ssl->mpdtls_pref_flow = NULL;
+            } else {
+                ssl->buffers.dtlsCtx.fd = ssl->ctx->CBIOSchedule(ssl, ssl->mpdtls_flows);
+            }
         }
+        
+        updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
 #endif /* WOLFSSL_MPDTLS */
 
         int sent = ssl->ctx->CBIOSend(ssl,
@@ -6758,10 +6761,9 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     }
 
-
-
     //we send a FeedbackAck
-    int seqNumber = ssl->keys.dtls_state.curSeq;; //last sequence number received
+    int seqNumber = ssl->keys.dtls_state.curSeq;; //last sequence number receive
+    ssl->mpdtls_pref_flow = flow;
     SendFeedbackAck(ssl, seqNumber);
 
     return 0;
@@ -6800,7 +6802,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
         // We reset the "timer"
         flow->r_stats.threshold = FEEDBACK_TX;
-        flow->r_stats.feedbackStatus = NULL_STATE;
+        flow->r_stats.feedback_status = NULL_STATE;
     }
     //otherwise we wait for another ack 
     return 0;
@@ -6844,6 +6846,9 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
             break;
 
         case HEARTBEAT_REQUEST:
+#ifdef WOLFSSL_MPDTLS
+            ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd);
+#endif
             ret = SendHeartbeatMessage(ssl, HEARTBEAT_RESPONSE, payload_length, input + *inOutIdx);
             break;
 
@@ -7644,7 +7649,7 @@ void updateReceiverStats(WOLFSSL* ssl) {
 
         //we must send a feedback, the threshold has been reached
         //some mechanism may be needed to ensure we do not send a feedback directly after this one
-        if(flow->r_stats.feedbackStatus == NULL_STATE && flow->r_stats.threshold <= 0) {
+        if(flow->r_stats.feedback_status == STATE_NULL && flow->r_stats.threshold <= 0) {
             SendFeedback(ssl, flow);
         } else {
             flow->r_stats.threshold--;
@@ -8362,9 +8367,10 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     int seqNumber = ssl->keys.dtls_sequence_number;
     flow->r_stats.last_feedback = seqNumber;
 
-    flow->r_stats.feedbackStatus = IN_FLIGHT;
+    flow->r_stats.feedback_status = IN_FLIGHT;
     flow->r_stats.threshold = FEEDBACK_RTX;
 
+    ssl->mpdtls_pref_flow = flow;
     return SendPacket(ssl, (void*) &feed, sz, feedback);
 }
 

@@ -1016,6 +1016,9 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
     #endif /* WOLFSSL_DTLS */
 #endif /* WOLFSSL_USER_IO */
 
+#ifdef WOLFSSL_MPDTLS
+    WOLFSSL_API int EmbedSchedulerRoundRobin(WOLFSSL* ssl, void* flows);
+#endif
 
 #ifdef HAVE_NETX
     WOLFSSL_API void wolfSSL_SetIO_NetX(WOLFSSL* ssl, NX_TCP_SOCKET* nxsocket,
@@ -1028,6 +1031,10 @@ WOLFSSL_API void  wolfSSL_CTX_SetGenCookie(WOLFSSL_CTX*, CallbackGenCookie);
 WOLFSSL_API void  wolfSSL_SetCookieCtx(WOLFSSL* ssl, void *ctx);
 WOLFSSL_API void* wolfSSL_GetCookieCtx(WOLFSSL* ssl);
 
+
+typedef int (*CallbackSchedule)(WOLFSSL* ssl, void *flows);
+
+WOLFSSL_API void wolfSSL_CTX_SetScheduler(WOLFSSL_CTX*, CallbackSchedule);
 
 /* I/O Callback default errors */
 enum IOerrors {

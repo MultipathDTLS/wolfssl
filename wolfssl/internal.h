@@ -1283,11 +1283,11 @@ typedef struct WOLFSSL_DTLS_CTX {
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
-    	struct  				sockaddr_storage host;     //a flow is determined by the host
-    	struct 					sockaddr_storage remote;   //and remote sockaddr (ip + port)
-    	int 					sock;                      //reference the connected socket if it exists
-    	MPDTLS_SENDER_STATS 	s_stats;                   //stats updated when we send packets
-    	MPDTLS_RECEIVER_STATS 	r_stats;                   //stats updated when we receive packets
+    	struct sockaddr_storage host;     //a flow is determined by the host
+    	struct sockaddr_storage remote;   //and remote sockaddr (ip + port)
+    	int 					sock;     //reference the connected socket if it exists
+    	MPDTLS_SENDER_STATS 	s_stats;  //stats updated when we send packets
+    	MPDTLS_RECEIVER_STATS 	r_stats;  //stats updated when we receive packets
     } MPDTLS_FLOW;
 
     typedef struct MPDTLS_FLOWS {
@@ -1559,6 +1559,9 @@ struct WOLFSSL_CTX {
     CallbackIOSend CBIOSend;
 #ifdef WOLFSSL_DTLS
     CallbackGenCookie CBIOCookie;       /* gen cookie callback */
+#endif
+#ifdef WOLFSSL_MPDTLS
+    CallbackSchedule  CBIOSchedule;
 #endif
     VerifyCallback  verifyCallback;     /* cert verification callback */
     word32          timeout;            /* session timeout */
@@ -2219,6 +2222,7 @@ struct WOLFSSL {
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
     MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
     MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
+    MPDTLS_FLOW*    mpdtls_pref_flow;   /* Force socket selection */
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
