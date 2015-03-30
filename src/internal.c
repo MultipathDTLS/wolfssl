@@ -6771,9 +6771,9 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         }
         flow->s_stats.waiting_ack = i;
         //we compute the loss_rate
-        float lr = (flow->s_stats.waiting_ack - feed->nbr_packets_received) / flow->s_stats.waiting_ack;
+        float lr = (flow->s_stats.waiting_ack - feed->nbr_packets_received) / (float) flow->s_stats.waiting_ack;
         //take the mean between previous and current
-        flow->s_stats.loss_rate = (lr + flow->s_stats.loss_rate) / 2;
+        flow->s_stats.loss_rate = (lr + flow->s_stats.loss_rate) / 2.0;
     }
 
 
@@ -7672,8 +7672,9 @@ void updateReceiverStats(WOLFSSL* ssl) {
 
         //we must send a feedback, the threshold has been reached
         //some mechanism may be needed to ensure we do not send a feedback directly after this one
-        if(flow->r_stats.feedback_status == STATE_NULL && flow->r_stats.threshold <= 0) {
+        if(flow->r_stats.threshold <= 0) {
             SendFeedback(ssl, flow);
+            flow->r_stats.threshold = FEEDBACK_RTX; // to be fixed
         } else {
             flow->r_stats.threshold--;
         }
