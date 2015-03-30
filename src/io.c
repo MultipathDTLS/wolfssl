@@ -521,11 +521,11 @@ int EmbedSchedulerRoundRobin(WOLFSSL* ssl, void* _flows)
 {
     (void) ssl;
     MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *)_flows;
-    /* Round Robin scheduler, must be moved to a dedicated method */
+    
+    flows->nextRound++;
     if(flows->nextRound == flows->nbrFlows)
         flows->nextRound = 0;
 
-    flows->nextRound++;
     return flows->flows[flows->nextRound].sock;
 }
 

@@ -401,7 +401,7 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
 void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 {
     int bufSz, i,j;
-    bufSz = ssl->mpdtls_flows->nbrFlows * 400;
+    bufSz = ssl->mpdtls_flows->nbrFlows * 4000;
     char buf[bufSz];
     MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
     for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++) {
@@ -421,10 +421,19 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq);
         sprintf(buf,"%sBackward delay : %ld \n",buf,flows[i].r_stats.backward_delay);
 
+        sprintf(buf,"%s----- Receiver Cache ----- \n",buf);
+        // stats info
+        sprintf(buf,"%sPackets received : %ld \n",buf,flows[i].r_stats.nbr_packets_received_cache);
+        sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq_cache);
+        sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq_cache);
+
         sprintf(buf,"%s----- Sender Stats ----- \n",buf);
         char seqbuf[flows[i].s_stats.nbr_packets_sent * 3 + 2];
         sprintf(seqbuf,"[");
         for(j = 0; j < flows[i].s_stats.nbr_packets_sent; j++) {
+            if(j==flows[i].s_stats.waiting_ack) {
+                sprintf(seqbuf,"%s |",seqbuf);
+            }
             sprintf(seqbuf,"%s %d",seqbuf, flows[i].s_stats.packets_sent[j]);
         }
         sprintf(buf,"%sPackets sent : %s] \n",buf,seqbuf);

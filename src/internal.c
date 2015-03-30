@@ -143,6 +143,13 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
 
 #endif /* min */
 
+#ifndef max
+    static INLINE int max(int a, int b)
+    {
+        return a > b ? a : b;
+    }
+#endif /* max */
+
 
 int IsTLS(const WOLFSSL* ssl)
 {
@@ -1974,15 +1981,19 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->r_stats.max_seq = 0;
     cur_flow->r_stats.nbr_packets_received = 0;
     cur_flow->r_stats.backward_delay = -1;
-    cur_flow->r_stats.threshold = 4; //magic number -> must be evaluated
+    cur_flow->r_stats.threshold = 2; //magic number -> must be evaluated
     cur_flow->r_stats.last_feedback = 0; //no last feedback
 
+    cur_flow->r_stats.nbr_packets_received_cache = 0;
+    cur_flow->r_stats.min_seq_cache = INT_MAX;
+    cur_flow->r_stats.max_seq_cache = 0;
 
     cur_flow->s_stats.capacity = 10;
     cur_flow->s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     cur_flow->s_stats.nbr_packets_sent = 0;
     cur_flow->s_stats.forward_delay = 0;
     cur_flow->s_stats.loss_rate = 0;
+    cur_flow->s_stats.waiting_ack = 0;
 
     return 0;
 }
@@ -3163,7 +3174,7 @@ int SendBuffered(WOLFSSL* ssl)
 
     while (ssl->buffers.outputBuffer.length > 0) {
 #ifdef WOLFSSL_MPDTLS
-        if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE) {
+        if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE && ssl->keys.dtls_sequence_number > 1) {
             /*we use only connected sockets */
             ssl->buffers.dtlsCtx.peer.sa = NULL;
             ssl->buffers.dtlsCtx.peer.sz = 0;
@@ -3174,9 +3185,11 @@ int SendBuffered(WOLFSSL* ssl)
             } else {
                 ssl->buffers.dtlsCtx.fd = ssl->ctx->CBIOSchedule(ssl, ssl->mpdtls_flows);
             }
+
+            updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
         }
         
-        updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
+
 #endif /* WOLFSSL_MPDTLS */
 
         int sent = ssl->ctx->CBIOSend(ssl,
@@ -6709,8 +6722,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 }
 
 static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
-    int ret,i, real_pckts_sent;
-    int last_index, j;
+    int ret,i;
     MPDtlsFeedback *feed;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
@@ -6731,38 +6743,37 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     //update the forward delay
     flow->s_stats.forward_delay = feed->forward_delay;
 
-    //first we make sure this packet is recent enough and we haven't consider the computation yet
+    if(flow->s_stats.waiting_ack < flow->s_stats.nbr_packets_sent) {
 
-    if(flow->s_stats.nbr_packets_sent > 0 && flow->s_stats.packets_sent[0] <= feed->min_seq) {
+        //we can remove the packets acked by both sides
+        if(feed->min_seq >= flow->s_stats.packets_sent[flow->s_stats.waiting_ack]) {
+            for(i=flow->s_stats.waiting_ack; i < flow->s_stats.nbr_packets_sent ; i++) {
+                if(flow->s_stats.packets_sent[i] == feed->min_seq) {
+                    break;
+                } 
+            }
+            flow->s_stats.waiting_ack = i;
+            flow->s_stats.nbr_packets_sent -= flow->s_stats.waiting_ack;
+            XMEMMOVE(flow->s_stats.packets_sent, 
+                     flow->s_stats.packets_sent + flow->s_stats.waiting_ack,
+                     sizeof(int) * flow->s_stats.nbr_packets_sent);
+        }
 
-        //compute the loss rate and remove old packets
-        //we consider all packets before max_seq as considered
-        real_pckts_sent = 0;
-        last_index = 0;
         for(i=0; i < flow->s_stats.nbr_packets_sent ; i++) {
-            if(flow->s_stats.packets_sent[i] <= feed->max_seq) {
-                real_pckts_sent++;
-                last_index = i;
+            if(flow->s_stats.packets_sent[i] > feed->max_seq) {
+                break;
             } 
         }
-
-        flow->s_stats.loss_rate = (real_pckts_sent - feed->nbr_packets_received) / real_pckts_sent;
-
-        //remove the packets used in the computation
-        j = 0;
-        for(i=last_index; i< flow->s_stats.nbr_packets_sent; i++) {
-            flow->s_stats.packets_sent[j] = flow->s_stats.packets_sent[i];
-            j++;
-        }
-
-        flow->s_stats.nbr_packets_sent -= real_pckts_sent;
-        flow->s_stats.packets_sent = (int *) XREALLOC(flow->s_stats.packets_sent, 
-            sizeof(int)* flow->s_stats.nbr_packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
-
+        flow->s_stats.waiting_ack = i;
+        //we compute the loss_rate
+        float lr = (flow->s_stats.waiting_ack - feed->nbr_packets_received) / flow->s_stats.waiting_ack;
+        //take the mean between previous and current
+        flow->s_stats.loss_rate = (lr + flow->s_stats.loss_rate) / 2;
     }
 
+
     //we send a FeedbackAck
-    int seqNumber = ssl->keys.dtls_state.curSeq;; //last sequence number receive
+    int seqNumber = ssl->keys.dtls_state.curSeq; //last sequence number receive
     ssl->mpdtls_pref_flow = flow;
     SendFeedbackAck(ssl, seqNumber);
 
@@ -6793,10 +6804,10 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     sprintf(buf,"received seq %d, when last_feedback is %d \n",ack->seq,flow->r_stats.last_feedback);
     WOLFSSL_MSG(buf);
     if(ack->seq == flow->r_stats.last_feedback) {
-        //then we can reset the stats
-        flow->r_stats.nbr_packets_received = 0;
-        flow->r_stats.min_seq =  INT_MAX;
-        flow->r_stats.max_seq = 0;
+        //then we can reset the cache
+        flow->r_stats.nbr_packets_received_cache = 0;
+        flow->r_stats.min_seq_cache =  INT_MAX;
+        flow->r_stats.max_seq_cache = 0;
 
         //we keep the forward delay as it is
 
@@ -7659,7 +7670,7 @@ void updateReceiverStats(WOLFSSL* ssl) {
 
 void updateSenderStats(WOLFSSL* ssl, int fd) {
     MPDTLS_FLOW* flow;
-    int seqNumber = ssl->keys.dtls_sequence_number;
+    int seqNumber = ssl->keys.dtls_sequence_number-1;
 
     flow = getFlowFromSocket(ssl, fd);
 
@@ -8358,10 +8369,23 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     WOLFSSL_MSG("SEND FEEDBACK");
     size_t sz = sizeof(MPDtlsFeedback);
     MPDtlsFeedback feed;
-    feed.nbr_packets_received = flow->r_stats.nbr_packets_received;
-    feed.min_seq = flow->r_stats.min_seq;
-    feed.max_seq = flow->r_stats.max_seq;
+
+    //we merge these data with the cache
+    flow->r_stats.min_seq_cache = min(flow->r_stats.min_seq, flow->r_stats.min_seq_cache);
+    flow->r_stats.max_seq_cache = max(flow->r_stats.max_seq, flow->r_stats.max_seq_cache);
+    flow->r_stats.nbr_packets_received_cache += flow->r_stats.nbr_packets_received;
+
+
+    feed.nbr_packets_received = flow->r_stats.nbr_packets_received_cache;
+    feed.min_seq = flow->r_stats.min_seq_cache;
+    feed.max_seq = flow->r_stats.max_seq_cache;
     feed.forward_delay = flow->r_stats.backward_delay;
+
+    //we reset the working set
+
+    flow->r_stats.min_seq = INT_MAX;
+    flow->r_stats.max_seq = 0;
+    flow->r_stats.nbr_packets_received = 0; 
 
     //we remember the sequence number
     int seqNumber = ssl->keys.dtls_sequence_number;

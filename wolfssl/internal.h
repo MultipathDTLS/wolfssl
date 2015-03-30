@@ -1268,6 +1268,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	int* 		packets_sent;       //sequence number of packets sent
     	int  		capacity;           //capacity of the array (mimic arraylist)
     	int 		nbr_packets_sent;   //number of stored packets inside packets_sent
+        int         waiting_ack;        //first packet which has not been transmitted
     	long        forward_delay;      //average forward delay         
     	float 		loss_rate;          //loss rate computed
     } MPDTLS_SENDER_STATS;
@@ -1276,6 +1277,9 @@ typedef struct WOLFSSL_DTLS_CTX {
     	long 	    	nbr_packets_received; //number of stored packets inside packets_sent
     	int        		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
     	int 			max_seq;              //maximum sequence number received so far
+        long            nbr_packets_received_cache; //same information as before but transmitted
+        int             min_seq_cache;
+        int             max_seq_cache;
     	long 			backward_delay;       //average backward delay
         int             threshold;            //after how many packets must we send a feedback ?
         int             last_feedback;        //sequence number of the last feedback we sent
