@@ -1699,6 +1699,8 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
+    ssl->mpdtls_pref_flow = NULL;
+    ssl->mpdtls_last_cim = 0;
 #endif /* WOLFSSL_MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1975,6 +1977,8 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     XMEMCPY(&cur_flow->remote, remoteaddr , rSz);
     //and port
     cur_flow->sock = sd;
+
+    cur_flow->last_heartbeat = 0;
 
     //initialize stats
     cur_flow->r_stats.min_seq = INT_MAX;
@@ -3186,6 +3190,7 @@ int SendBuffered(WOLFSSL* ssl)
                 ssl->buffers.dtlsCtx.fd = ssl->ctx->CBIOSchedule(ssl, ssl->mpdtls_flows);
             }
 
+            checkTimeouts(ssl, ssl->buffers.dtlsCtx.fd);
             updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
         }
         
@@ -6777,6 +6782,9 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     ssl->mpdtls_pref_flow = flow;
     SendFeedbackAck(ssl, seqNumber);
 
+    // We have finished with that. "Empty" the buffer.
+    ssl->buffers.clearOutputBuffer.length = 0;
+
     return 0;
 }
 
@@ -6815,6 +6823,10 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         flow->r_stats.threshold = FEEDBACK_TX;
         flow->r_stats.feedback_status = NULL_STATE;
     }
+
+    // We have finished with that. "Empty" the buffer.
+    ssl->buffers.clearOutputBuffer.length = 0;
+
     //otherwise we wait for another ack 
     return 0;
 }
@@ -7684,6 +7696,12 @@ void updateSenderStats(WOLFSSL* ssl, int fd) {
         flow->s_stats.packets_sent[flow->s_stats.nbr_packets_sent] = seqNumber;
         flow->s_stats.nbr_packets_sent++;
     }
+}
+
+void checkTimeouts(WOLFSSL *ssl, int fd) {
+    //We check if we need to send any heartbeat
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl, fd);
+    (void) flow;
 }
 #endif
 

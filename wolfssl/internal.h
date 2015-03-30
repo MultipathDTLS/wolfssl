@@ -1269,7 +1269,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	int  		capacity;           //capacity of the array (mimic arraylist)
     	int 		nbr_packets_sent;   //number of stored packets inside packets_sent
         int         waiting_ack;        //first packet which has not been transmitted
-    	long        forward_delay;      //average forward delay         
+    	long        forward_delay;      //average forward delay
     	float 		loss_rate;          //loss rate computed
     } MPDTLS_SENDER_STATS;
 
@@ -1287,11 +1287,12 @@ typedef struct WOLFSSL_DTLS_CTX {
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
-    	struct sockaddr_storage host;     //a flow is determined by the host
-    	struct sockaddr_storage remote;   //and remote sockaddr (ip + port)
-    	int 					sock;     //reference the connected socket if it exists
-    	MPDTLS_SENDER_STATS 	s_stats;  //stats updated when we send packets
-    	MPDTLS_RECEIVER_STATS 	r_stats;  //stats updated when we receive packets
+    	struct sockaddr_storage host;               //a flow is determined by the host
+    	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
+    	int 					sock;               //reference the connected socket if it exists
+        long                    last_heartbeat;     //last timestamp
+    	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
+    	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
     } MPDTLS_FLOW;
 
     typedef struct MPDTLS_FLOWS {
@@ -1308,6 +1309,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd);
     void updateReceiverStats(WOLFSSL*);
     void updateSenderStats(WOLFSSL*, int);
+    void checkTimeouts(WOLFSSL*, int);
  
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
@@ -2227,6 +2229,7 @@ struct WOLFSSL {
     MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
     MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
     MPDTLS_FLOW*    mpdtls_pref_flow;   /* Force socket selection */
+    word64          mpdtls_last_cim;    /* Timestamp of last CIM */
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
