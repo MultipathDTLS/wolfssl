@@ -6867,7 +6867,8 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
              && XMEMCMP(ssl->heartbeatPayload, input + *inOutIdx, ssl->heartbeatPayloadLength) == 0) {
                 XFREE(ssl->heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
                 ssl->heartbeatPayload = NULL;
-                ssl->heartbeatPayloadLength = 0;  
+                ssl->heartbeatPayloadLength = 0;
+                ssl->heartbeatState = NULL_STATE;
             } else {
                 WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
             }
@@ -7723,6 +7724,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         WOLFSSL_MSG("Times out for heartbeat");
         ssl->mpdtls_pref_flow = flow;
         gettimeofday(&flow->last_heartbeat, NULL);
+        ssl->heartbeatState = NULL_STATE;
         SendHeartbeatMessage(ssl, HEARTBEAT_REQUEST, sizeof(now), (byte*) &now);
     }
 
