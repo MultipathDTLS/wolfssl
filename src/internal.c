@@ -6867,11 +6867,11 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
              && XMEMCMP(ssl->heartbeatPayload, input + *inOutIdx, ssl->heartbeatPayloadLength) == 0) {
                 XFREE(ssl->heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
                 ssl->heartbeatPayload = NULL;
-                ssl->heartbeatPayloadLength = 0;
-                ssl->heartbeatState = NULL_STATE;   
+                ssl->heartbeatPayloadLength = 0;  
             } else {
                 WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
             }
+            ssl->heartbeatState = NULL_STATE; 
             break;
 
         case HEARTBEAT_REQUEST:
@@ -7570,10 +7570,12 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     idx += HB_MSG_HEADER_SZ;
 
-    ssl->heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
-    XMEMCPY(ssl->heartbeatPayload, payload, payload_length);
+    if(type == HEARTBEAT_REQUEST) {
+        ssl->heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
+        XMEMCPY(ssl->heartbeatPayload, payload, payload_length);
+        ssl->heartbeatPayloadLength = payload_length;
+    }
     XMEMCPY(output + idx, payload, payload_length);
-    ssl->heartbeatPayloadLength = payload_length;
 
     idx += payload_length;
 
@@ -7712,7 +7714,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
     struct timeval now, offset, validity_limit;
     gettimeofday(&now, NULL);
     timerclear(&offset);
-    offset.tv_sec = 2;
+    offset.tv_sec = 10;
 
     timersub(&now, &offset, &validity_limit);
 
