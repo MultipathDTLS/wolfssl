@@ -43,6 +43,7 @@
     #include <arpa/inet.h>
     #include <netdb.h>
     #include <unistd.h>
+    #include <sys/time.h>
 #endif
 
 #ifdef WOLFSSL_PREFIX

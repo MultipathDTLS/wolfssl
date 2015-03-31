@@ -1700,7 +1700,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
     ssl->mpdtls_pref_flow = NULL;
-    ssl->mpdtls_last_cim = 0;
+    timerclear(&ssl->mpdtls_last_cim);
 #endif /* WOLFSSL_MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1978,7 +1978,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     //and port
     cur_flow->sock = sd;
 
-    cur_flow->last_heartbeat = 0;
+    timerclear(&cur_flow->last_heartbeat);
 
     //initialize stats
     cur_flow->r_stats.min_seq = INT_MAX;
@@ -3190,7 +3190,6 @@ int SendBuffered(WOLFSSL* ssl)
                 ssl->buffers.dtlsCtx.fd = ssl->ctx->CBIOSchedule(ssl, ssl->mpdtls_flows);
             }
 
-            checkTimeouts(ssl, ssl->buffers.dtlsCtx.fd);
             updateSenderStats(ssl, ssl->buffers.dtlsCtx.fd);
         }
         
@@ -3253,6 +3252,12 @@ int SendBuffered(WOLFSSL* ssl)
 
     if (ssl->buffers.outputBuffer.dynamicFlag)
         ShrinkOutputBuffer(ssl);
+
+#ifdef WOLFSSL_MPDTLS
+    if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE) {
+        checkTimeouts(ssl, ssl->buffers.dtlsCtx.fd);
+    }
+#endif
 
     return 0;
 }
@@ -6718,6 +6723,8 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     //we need to send back a CIM if the reply bit is set to 1
     if(cih->reply) {
         SendChangeInterface(ssl, ssl->mpdtls_host, 0);
+    } else {
+        timerclear(&ssl->mpdtls_last_cim);
     }
     
     // We have finished with that. "Empty" the buffer.
@@ -7535,7 +7542,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     word32             length, idx = RECORD_HEADER_SZ;
     int                ret;
 
-    if (ssl->heartbeatState == IN_FLIGHT) {
+    if (type == HEARTBEAT_REQUEST && ssl->heartbeatState == IN_FLIGHT) {
         return HEARTBEAT_ALREADY_FLYING;
     }
 
@@ -7578,6 +7585,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     if (type == HEARTBEAT_REQUEST)
         ssl->heartbeatState = IN_FLIGHT;
+    
     ssl->buffers.outputBuffer.length += length;
 
     return SendBuffered(ssl);
@@ -7702,7 +7710,28 @@ void updateSenderStats(WOLFSSL* ssl, int fd) {
 void checkTimeouts(WOLFSSL *ssl, int fd) {
     //We check if we need to send any heartbeat
     MPDTLS_FLOW *flow = getFlowFromSocket(ssl, fd);
-    (void) flow;
+    struct timeval now, offset, validity_limit;
+    gettimeofday(&now, NULL);
+    timerclear(&offset);
+    offset.tv_sec = 2;
+
+    timersub(&now, &offset, &validity_limit);
+
+    if (!timerisset(&flow->last_heartbeat)
+     || timercmp(&flow->last_heartbeat, &validity_limit, <)) {
+        WOLFSSL_MSG("Times out for heartbeat");
+        ssl->mpdtls_pref_flow = flow;
+        gettimeofday(&flow->last_heartbeat, NULL);
+        SendHeartbeatMessage(ssl, HEARTBEAT_REQUEST, sizeof(now), (byte*) &now);
+    }
+
+    // TODO change the validity limit
+
+    if (timerisset(&ssl->mpdtls_last_cim)
+     && timercmp(&ssl->mpdtls_last_cim, &validity_limit, <)) {
+        WOLFSSL_MSG("Retransmit the CIM");
+        SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+    }
 }
 #endif
 
@@ -8379,6 +8408,10 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 
         XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader) + sizeof(MPDtlsChangeInterfaceAddress) * i,
                 &changeAddr, sizeof(MPDtlsChangeInterfaceAddress));
+    }
+
+    if (isReply == 1) {
+        gettimeofday(&ssl->mpdtls_last_cim, NULL);
     }
 
     return SendPacket(ssl, (void*) output, sz, change_interface);
