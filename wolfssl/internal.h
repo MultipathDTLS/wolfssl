@@ -1264,6 +1264,8 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define FEEDBACK_TX  5
     #define FEEDBACK_RTX 2
 
+    #define FEEDBACK_CAPACITY 10
+
     typedef struct MPDTLS_SENDER_STATS {
     	int* 		packets_sent;       //sequence number of packets sent
     	int  		capacity;           //capacity of the array (mimic arraylist)
@@ -1283,7 +1285,6 @@ typedef struct WOLFSSL_DTLS_CTX {
     	long 			backward_delay;       //average backward delay
         int             threshold;            //after how many packets must we send a feedback ?
         int             last_feedback;        //sequence number of the last feedback we sent
-        MessageState    feedback_status;
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {

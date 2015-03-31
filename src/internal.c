@@ -1985,15 +1985,15 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->r_stats.max_seq = 0;
     cur_flow->r_stats.nbr_packets_received = 0;
     cur_flow->r_stats.backward_delay = -1;
-    cur_flow->r_stats.threshold = 2; //magic number -> must be evaluated
+    cur_flow->r_stats.threshold = FEEDBACK_TX; //magic number -> must be evaluated
     cur_flow->r_stats.last_feedback = 0; //no last feedback
 
     cur_flow->r_stats.nbr_packets_received_cache = 0;
     cur_flow->r_stats.min_seq_cache = INT_MAX;
     cur_flow->r_stats.max_seq_cache = 0;
 
-    cur_flow->s_stats.capacity = 10;
-    cur_flow->s_stats.packets_sent = XMALLOC(sizeof(int)*10, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    cur_flow->s_stats.capacity = FEEDBACK_CAPACITY;
+    cur_flow->s_stats.packets_sent = XMALLOC(sizeof(int)*FEEDBACK_CAPACITY, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     cur_flow->s_stats.nbr_packets_sent = 0;
     cur_flow->s_stats.forward_delay = 0;
     cur_flow->s_stats.loss_rate = 0;
@@ -6826,9 +6826,8 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
         //we keep the forward delay as it is
 
-        // We reset the "timer"
+        // We reset the threshold
         flow->r_stats.threshold = FEEDBACK_TX;
-        flow->r_stats.feedback_status = NULL_STATE;
     }
 
     // We have finished with that. "Empty" the buffer.
@@ -8443,7 +8442,6 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     int seqNumber = ssl->keys.dtls_sequence_number;
     flow->r_stats.last_feedback = seqNumber;
 
-    flow->r_stats.feedback_status = IN_FLIGHT;
     flow->r_stats.threshold = FEEDBACK_RTX;
 
     ssl->mpdtls_pref_flow = flow;
