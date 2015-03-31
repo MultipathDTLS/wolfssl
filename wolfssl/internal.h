@@ -1266,12 +1266,14 @@ typedef struct WOLFSSL_DTLS_CTX {
 
     #define FEEDBACK_CAPACITY 10
 
+    #define EWMA_ALPHA 0.875
+
     typedef struct MPDTLS_SENDER_STATS {
     	int* 		packets_sent;       //sequence number of packets sent
     	int  		capacity;           //capacity of the array (mimic arraylist)
     	int 		nbr_packets_sent;   //number of stored packets inside packets_sent
         int         waiting_ack;        //first packet which has not been transmitted
-    	long        forward_delay;      //average forward delay
+    	long        forward_delay;      //average forward delay (us)
     	float 		loss_rate;          //loss rate computed
     } MPDTLS_SENDER_STATS;
 
@@ -1282,7 +1284,7 @@ typedef struct WOLFSSL_DTLS_CTX {
         long            nbr_packets_received_cache; //same information as before but transmitted
         int             min_seq_cache;
         int             max_seq_cache;
-    	long 			backward_delay;       //average backward delay
+    	long 			backward_delay;       //average backward delay (us)
         int             threshold;            //after how many packets must we send a feedback ?
         int             last_feedback;        //sequence number of the last feedback we sent
     } MPDTLS_RECEIVER_STATS;
@@ -1496,7 +1498,8 @@ typedef enum HeartbeatMode {
 
 typedef enum HeartbeatMessageType {
     HEARTBEAT_REQUEST   = 0x01,
-    HEARTBEAT_RESPONSE  = 0x02
+    HEARTBEAT_RESPONSE  = 0x02,
+    HEARTBEAT_TIMESTAMP = 0x03
 } HeartbeatMessageType;
 
 typedef struct HeartbeatExtension {
