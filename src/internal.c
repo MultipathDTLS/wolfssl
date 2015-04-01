@@ -6779,8 +6779,8 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         flow->s_stats.waiting_ack = i;
         //we compute the loss_rate
         float lr = (flow->s_stats.waiting_ack - feed->nbr_packets_received) / (float) flow->s_stats.waiting_ack;
-        //take the mean between previous and current
-        flow->s_stats.loss_rate = (lr + flow->s_stats.loss_rate) / 2.0;
+        //take the EWMA between previous and current
+        flow->s_stats.loss_rate = flow->s_stats.loss_rate * EWMA_ALPHA + lr * (1 - EWMA_ALPHA);
     }
 
 
@@ -6872,7 +6872,6 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
             } else {
                 WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
             }
-            ssl->heartbeatState = NULL_STATE; 
             break;
 
         case HEARTBEAT_REQUEST:
