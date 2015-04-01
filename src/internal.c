@@ -1984,7 +1984,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->r_stats.min_seq = INT_MAX;
     cur_flow->r_stats.max_seq = 0;
     cur_flow->r_stats.nbr_packets_received = 0;
-    cur_flow->r_stats.backward_delay = -1;
+    cur_flow->r_stats.backward_delay = 0;
     cur_flow->r_stats.threshold = FEEDBACK_TX; //magic number -> must be evaluated
     cur_flow->r_stats.last_feedback = 0; //no last feedback
 
@@ -6874,13 +6874,30 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
             }
             break;
 
+#ifdef WOLFSSL_MPDTLS
+        case HEARTBEAT_TIMESTAMP: ;
+            //we compute the forward delay
+            MPDTLS_FLOW *cur_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd);
+            struct timeval *remote = (struct timeval *) (input + *inOutIdx);
+            struct timeval host, res;
+            gettimeofday(&host,NULL);
+            timersub(&host,remote,&res);
+            long delay = res.tv_sec*1000000+res.tv_usec;
+
+            //exponential mean with jacobson value
+
+            cur_flow->r_stats.backward_delay = EWMA_ALPHA * cur_flow->r_stats.backward_delay
+                                                + (1 - EWMA_ALPHA) * delay;
+            //then fallback to regular HB_request
+
+#endif
+
         case HEARTBEAT_REQUEST:
 #ifdef WOLFSSL_MPDTLS
-            ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd);
+            ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd); 
 #endif
             ret = SendHeartbeatMessage(ssl, HEARTBEAT_RESPONSE, payload_length, input + *inOutIdx);
             break;
-
         default:
             WOLFSSL_ERROR(UNKNOWN_HEARTBEAT_MODE_E);
             /* Discard silently malformed packets */
@@ -7541,7 +7558,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     word32             length, idx = RECORD_HEADER_SZ;
     int                ret;
 
-    if (type == HEARTBEAT_REQUEST && ssl->heartbeatState == IN_FLIGHT) {
+    if (type != HEARTBEAT_RESPONSE && ssl->heartbeatState == IN_FLIGHT) {
         return HEARTBEAT_ALREADY_FLYING;
     }
 
@@ -7586,7 +7603,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     idx += HB_MSG_HEADER_SZ;
 
-    if(type == HEARTBEAT_REQUEST) {
+    if(type != HEARTBEAT_RESPONSE) {
         ssl->heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
         XMEMCPY(ssl->heartbeatPayload, payload, payload_length);
         ssl->heartbeatPayloadLength = payload_length;
@@ -7600,7 +7617,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     if (ret != 0)
         return ret;
 
-    if (type == HEARTBEAT_REQUEST)
+    if (type != HEARTBEAT_RESPONSE)
         ssl->heartbeatState = IN_FLIGHT;
     
     ssl->buffers.outputBuffer.length += length;
@@ -7739,8 +7756,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         WOLFSSL_MSG("Times out for heartbeat");
         ssl->mpdtls_pref_flow = flow;
         gettimeofday(&flow->last_heartbeat, NULL);
-        ssl->heartbeatState = NULL_STATE;
-        SendHeartbeatMessage(ssl, HEARTBEAT_REQUEST, sizeof(now), (byte*) &now);
+        SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, sizeof(now), (byte*) &now);
     }
 
     // TODO change the validity limit
