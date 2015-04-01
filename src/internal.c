@@ -7551,7 +7551,18 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
         idx = DTLS_RECORD_HEADER_SZ;
 #endif
 
-    length = idx + HB_MSG_HEADER_SZ + payload_length + 20;
+    //length = idx + HB_MSG_HEADER_SZ + payload_length;
+
+#ifdef HAVE_MAX_FRAGMENT
+        length = min(ssl->max_fragment, OUTPUT_RECORD_SIZE);
+#else
+        length = OUTPUT_RECORD_SIZE;
+#endif
+
+#if WOLFSSL_DTLS
+        if (ssl->options.dtls)
+            length = min(length, MAX_UDP_SIZE);
+#endif
 
     /* check for avalaible size */
     if ((ret = CheckAvailableSize(ssl, length)) != 0)
@@ -7561,7 +7572,12 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     output = ssl->buffers.outputBuffer.buffer +
              ssl->buffers.outputBuffer.length;
 
-    AddRecordHeader(output, length - DTLS_RECORD_HEADER_SZ, heartbeat, ssl);
+#ifdef WOLFSSL_DTLS
+    if (ssl->options.dtls)
+        AddRecordHeader(output, length - DTLS_RECORD_HEADER_SZ, heartbeat, ssl);
+    else
+#endif
+        AddRecordHeader(output, length - RECORD_HEADER_SZ, heartbeat, ssl);
 
     /* now write to output */
     HeartbeatMessageHeader *message;
@@ -7581,7 +7597,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     idx += payload_length;
 
     /* then random */
-    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, 20);
+    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, length - idx);
     if (ret != 0)
         return ret;
 
