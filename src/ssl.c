@@ -227,7 +227,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
 
 
         if (getpeername(fd, (struct sockaddr *) &cl1, &sz) == 0) {
-            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &cl1, sz);
+            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &cl1, sz);
         }
         
         if (getsockname(fd, (struct sockaddr *) &cl2, &sz2) == 0) {
@@ -239,7 +239,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
                 valid = ((struct sockaddr_in6*) &cl2)->sin6_port;
             }
             if(valid) {
-                InsertAddr(ssl, ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
+                InsertAddr(ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
                 mpdtlsAddNewFlow(ssl, (struct sockaddr*) &cl1, sz, (struct sockaddr*) &cl2, sz2, fd);
             }
         }
@@ -326,6 +326,29 @@ int wolfSSL_mpdtls(WOLFSSL* ssl)
 
 
 #ifdef WOLFSSL_MPDTLS
+int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
+{
+    int error;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        for (; res; res = res->ai_next) {
+            InsertAddr(ctx->mpdtls_host, (struct sockaddr *) res->ai_addr, res->ai_addrlen);
+        }
+    }
+
+    return SSL_SUCCESS;
+}
+
 int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
 {
     int error, n;
@@ -345,12 +368,12 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
             // Get a free port to bind to
             struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
             if (addr->sa_family == AF_INET) {
-                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl, AF_INET, res->ai_addr, res->ai_addrlen);
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET, res->ai_addr, res->ai_addrlen);
             } else if (addr->sa_family == AF_INET6) {
-                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl, AF_INET6, res->ai_addr, res->ai_addrlen);
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET6, res->ai_addr, res->ai_addrlen);
             }
 
-            if (InsertAddr(ssl, ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {
+            if (InsertAddr(ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {
                 n++; // Count the number of addresses we add
             }
         }
@@ -380,7 +403,7 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
         return PARSE_ADDR_E;
     } else {
         while (res) {
-            if (DeleteAddr(ssl, ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
+            if (DeleteAddr(ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
                 n++;
             }
 
@@ -486,7 +509,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
         if (connect(wolfSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) == 0) {
             
             if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
-                InsertAddr(ssl, ssl->mpdtls_host, host, hostSz);
+                InsertAddr(ssl->mpdtls_host, host, hostSz);
                 //we must add a flow here as well
                 mpdtlsAddNewFlow(ssl, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl));
             }
@@ -497,7 +520,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
         WOLFSSL_MSG("Error on bind in set peer");
     }
 
-    InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) peer, peerSz);
+    InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) peer, peerSz);
 
 #endif /* WOLFSSL_MPDTLS */
     void* sa = (void*)XMALLOC(peerSz, ssl->heap, DYNAMIC_TYPE_SOCKADDR);

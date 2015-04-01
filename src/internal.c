@@ -395,7 +395,9 @@ int InitSSL_Ctx(WOLFSSL_CTX* ctx, WOLFSSL_METHOD* method)
         }
     #endif
 #endif /* WOLFSSL_USER_IO */
-
+#ifdef WOLFSSL_MPDTLS
+    MpdtlsAddrsInit(&ctx->mpdtls_host);
+#endif
 #ifdef HAVE_NETX
     ctx->CBIORecv = NetX_Receive;
     ctx->CBIOSend = NetX_Send;
@@ -443,6 +445,9 @@ void SSL_CtxResourceFree(WOLFSSL_CTX* ctx)
     XFREE(ctx->certificate.buffer, ctx->heap, DYNAMIC_TYPE_CERT);
     XFREE(ctx->certChain.buffer, ctx->heap, DYNAMIC_TYPE_CERT);
     wolfSSL_CertManagerFree(ctx->cm);
+#endif
+#ifdef WOLFSSL_MPDTLS
+    MpdtlsAddrsFree(&ctx->mpdtls_host);
 #endif
 #ifdef HAVE_TLS_EXTENSIONS
     TLSX_FreeAll(ctx->extensions);
@@ -1695,10 +1700,11 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 #endif
 
 #ifdef WOLFSSL_MPDTLS
-    MpdtlsAddrsInit(ssl, &(ssl->mpdtls_remote));
-    MpdtlsAddrsInit(ssl, &(ssl->mpdtls_host));
+    MpdtlsAddrsInit(&(ssl->mpdtls_remote));
+    MpdtlsAddrsInit(&(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
+    MpdtlsAddrsRestore(ssl, &(ssl->mpdtls_host));
     ssl->mpdtls_pref_flow = NULL;
     timerclear(&ssl->mpdtls_last_cim);
 #endif /* WOLFSSL_MPDTLS */
@@ -1734,19 +1740,39 @@ void FreeArrays(WOLFSSL* ssl, int keep)
 #ifdef WOLFSSL_MPDTLS
 
 /* Init struct MPDTLS addr */
-void MpdtlsAddrsInit(WOLFSSL* ssl, MPDTLS_ADDRS** addr) {
+void MpdtlsAddrsInit(MPDTLS_ADDRS** addr) {
     *addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
-                                    ssl->heap, DYNAMIC_TYPE_MPDTLS);
+                                    NULL, DYNAMIC_TYPE_MPDTLS);
     (*addr)->nbrAddrs = 0;
     (*addr)->nextRound = 0;
     (*addr)->addrs = NULL;
 }
 
+void MpdtlsAddrsRestore(WOLFSSL* ssl, MPDTLS_ADDRS** addr) {
+    MPDTLS_ADDRS *src = ssl->ctx->mpdtls_host;
+
+    XMEMCPY(*addr, src, sizeof(MPDTLS_ADDRS));
+    (*addr)->addrs = (struct sockaddr_storage *) XMALLOC(
+                        sizeof(struct sockaddr_storage) * (src->nbrAddrs),
+                        NULL, DYNAMIC_TYPE_MPDTLS);
+    XMEMCPY((*addr)->addrs, src->addrs, sizeof(struct sockaddr_storage) * (src->nbrAddrs));
+
+    int i;
+    for (i = 0; i < src->nbrAddrs; i++) {
+        struct sockaddr *sa = (struct sockaddr *) &((*addr)->addrs[i]);
+
+        if (sa->sa_family == AF_INET) {
+            ((struct sockaddr_in *) sa)->sin_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET, sa, sizeof(struct sockaddr_in));
+        } else if (sa->sa_family == AF_INET6) {
+            ((struct sockaddr_in6 *) sa)->sin6_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET6, sa, sizeof(struct sockaddr_in6));
+        }
+    }
+}
+
 /* Free struct MPDTLS addr */
-void MpdtlsAddrsFree(WOLFSSL* ssl, MPDTLS_ADDRS** addr) {
-    (void)ssl; // workaround compiler --unused-parameter
-    XFREE((*addr)->addrs, ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    XFREE(*addr, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+void MpdtlsAddrsFree(MPDTLS_ADDRS** addr) {
+    XFREE((*addr)->addrs, NULL, DYNAMIC_TYPE_MPDTLS);
+    XFREE(*addr, NULL, DYNAMIC_TYPE_MPDTLS);
     *addr = NULL;
 }
 
@@ -1906,7 +1932,7 @@ int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct
              && sockAddrEqualPort(&h, hostaddr) > 0) {
                 WOLFSSL_MSG("Using a socket from the pool !");
                 sd = pool->socks[i];
-                DeleteSockbyIndex(ssl, pool, i);
+                DeleteSockbyIndex(pool, i);
                 break;
             }
         }
@@ -2065,8 +2091,8 @@ void SSL_ResourceFree(WOLFSSL* ssl)
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
 
 #ifdef WOLFSSL_MPDTLS
-    MpdtlsAddrsFree(ssl, &(ssl->mpdtls_remote));
-    MpdtlsAddrsFree(ssl, &(ssl->mpdtls_host));
+    MpdtlsAddrsFree(&(ssl->mpdtls_remote));
+    MpdtlsAddrsFree(&(ssl->mpdtls_host));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsFree(ssl, &(ssl->mpdtls_flows));
 #endif
@@ -2566,9 +2592,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
 #endif /* WOLFSSL_DTLS */
 
 #ifdef WOLFSSL_MPDTLS
-    int InsertSock(WOLFSSL* ssl, MPDTLS_SOCKS* socks, int sock) {
-        (void)ssl;
-        
+    int InsertSock(MPDTLS_SOCKS* socks, int sock) {
         socks->nbrSocks++;
         socks->socks = (int*) XREALLOC(socks->socks,
                                 sizeof(int) * socks->nbrSocks,
@@ -2580,8 +2604,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         return SSL_SUCCESS;
     }
 
-    int DeleteSock(WOLFSSL* ssl, MPDTLS_SOCKS* socks, int sock) {
-        (void)ssl;
+    int DeleteSock(MPDTLS_SOCKS* socks, int sock) {
         int index, found = 0;
 
         for (index = 0; index < socks->nbrSocks; index++) {
@@ -2592,15 +2615,13 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
 
         if (found == 1) {
-            return DeleteSockbyIndex(ssl, socks, index);
+            return DeleteSockbyIndex(socks, index);
         }
 
         return NOT_FOUND_E;
     }
 
-    int DeleteSockbyIndex(WOLFSSL* ssl, MPDTLS_SOCKS* socks, int index) {
-        (void)ssl;
-        
+    int DeleteSockbyIndex(MPDTLS_SOCKS* socks, int index) {
         if (socks->nbrSocks > index && index >= 0) {
             socks->nbrSocks--;
 
@@ -2624,9 +2645,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }    
 
-    int InsertAddr(WOLFSSL* ssl, MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
-        (void)ssl;
-        
+    int InsertAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
         addrs->nbrAddrs++;
         addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
                                       sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
@@ -2640,7 +2659,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         return SSL_SUCCESS;
     }
     
-    int DeleteAddr(WOLFSSL* ssl, MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+    int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
         int index, found = 0;
 
         for (index = 0; index < addrs->nbrAddrs; index++) {
@@ -2651,15 +2670,13 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
 
         if (found == 1) {
-            return DeleteAddrbyIndex(ssl, addrs, index);
+            return DeleteAddrbyIndex(addrs, index);
         }
 
         return NOT_FOUND_E;
     }
 
-    int DeleteAddrbyIndex(WOLFSSL* ssl, MPDTLS_ADDRS* addrs, int index) {
-        (void)ssl;
-
+    int DeleteAddrbyIndex(MPDTLS_ADDRS* addrs, int index) {
         if (addrs->nbrAddrs > index && index >= 0) {
             addrs->nbrAddrs--;
 
@@ -2683,7 +2700,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }
 
-    int GetFreePortNumber(WOLFSSL* ssl, int family, const struct sockaddr *sa, socklen_t saSz)
+    int GetFreePortNumber(MPDTLS_SOCKS* pool, int family, const struct sockaddr *sa, socklen_t saSz)
     {
         WOLFSSL_ENTER("GetFreePortNumber");
 
@@ -2711,7 +2728,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
 
         // REMEMBER THE SOCK
-        InsertSock(ssl, ssl->mpdtls_pool, sock);
+        InsertSock(pool, sock);
 
         int ret = -1;
         if (family == AF_INET) {
@@ -6673,8 +6690,8 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 
     MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
     /* We empty the structure and rebuild it */
-    MpdtlsAddrsFree(ssl, &ma);
-    MpdtlsAddrsInit(ssl, &ma);
+    MpdtlsAddrsFree(&ma);
+    MpdtlsAddrsInit(&ma);
     
     for(i = 0; i < cih->nbrAddrs; i++) {
         MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
@@ -6695,13 +6712,13 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
             u_int32_t addrTemp;
             ato32((changeAddr->address+12), &addrTemp);
             addr.sin_addr.s_addr = htonl(addrTemp); 
-            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
+            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
         } else {
             struct sockaddr_in6 addr;
             addr.sin6_family = AF_INET6;
             addr.sin6_port = ntohs(changeAddr->portNumber);
             XMEMCPY(addr.sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
-            InsertAddr(ssl, ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
+            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
         }
     }
 
@@ -7577,7 +7594,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
 #if WOLFSSL_DTLS
         if (ssl->options.dtls)
-            length = min(length, MAX_UDP_SIZE);
+            length = min(length, 1472);//MAX_UDP_SIZE);
 #endif
 
     /* check for avalaible size */

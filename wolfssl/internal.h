@@ -1247,8 +1247,9 @@ typedef struct WOLFSSL_DTLS_CTX {
         struct sockaddr_storage*      addrs;          /* Contains all the available addresses for MPDTLS (both IPV4 or IPV6) */
     } MPDTLS_ADDRS;
 
-    void MpdtlsAddrsInit(WOLFSSL*, MPDTLS_ADDRS**);
-    void MpdtlsAddrsFree(WOLFSSL*, MPDTLS_ADDRS**);
+    void MpdtlsAddrsInit(MPDTLS_ADDRS**);
+    void MpdtlsAddrsRestore(WOLFSSL*, MPDTLS_ADDRS**);
+    void MpdtlsAddrsFree(MPDTLS_ADDRS**);
 
     typedef struct MPDTLS_SOCKS {
         int*            socks;              /* Contains all the available sockets for MPDTLS */
@@ -1571,7 +1572,8 @@ struct WOLFSSL_CTX {
     CallbackGenCookie CBIOCookie;       /* gen cookie callback */
 #endif
 #ifdef WOLFSSL_MPDTLS
-    CallbackSchedule  CBIOSchedule;
+    CallbackSchedule  CBIOSchedule;       /* Scheduler callback */
+    MPDTLS_ADDRS*     mpdtls_host;        /* available addresses in host (nbr interfaces) */
 #endif
     VerifyCallback  verifyCallback;     /* cert verification callback */
     word32          timeout;            /* session timeout */
@@ -2532,13 +2534,13 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
     WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
     WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, int seq);
-    WOLFSSL_LOCAL int  InsertSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
-    WOLFSSL_LOCAL int  DeleteSock(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
-    WOLFSSL_LOCAL int  DeleteSockbyIndex(WOLFSSL* ssl, MPDTLS_SOCKS*, int);
-    WOLFSSL_LOCAL int  InsertAddr(WOLFSSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
-    WOLFSSL_LOCAL int  DeleteAddr(WOLFSSL* ssl, MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
-    WOLFSSL_LOCAL int  DeleteAddrbyIndex(WOLFSSL* ssl, MPDTLS_ADDRS*, int);
-    WOLFSSL_LOCAL int  GetFreePortNumber(WOLFSSL* ssl, int, const struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int  InsertSock(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  DeleteSock(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  DeleteSockbyIndex(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int  InsertAddr(MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int  DeleteAddr(MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int  DeleteAddrbyIndex(MPDTLS_ADDRS*, int);
+    WOLFSSL_LOCAL int  GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, socklen_t);
 #endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS

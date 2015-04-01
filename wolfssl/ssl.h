@@ -342,6 +342,7 @@ WOLFSSL_API int  wolfSSL_dtls_get_peer(WOLFSSL*, void*, unsigned int*);
 /*  MPDTLS functions    */
 WOLFSSL_API int  wolfSSL_mpdtls(WOLFSSL* ssl);
 WOLFSSL_API int  wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char*);
+WOLFSSL_API int  wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char*);
 WOLFSSL_API int  wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *);
 WOLFSSL_API void wolfSSL_mpdtls_stats(WOLFSSL*);
 
