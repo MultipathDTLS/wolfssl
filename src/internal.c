@@ -3464,6 +3464,8 @@ static int GetRecordHeader(WOLFSSL* ssl, const byte* input, word32* inOutIdx,
         case feedback:
         case feedback_ack:
         case change_interface:
+        case want_connect:
+        case want_connect_ack:
             /* haven't decrypted this record yet */
             ssl->keys.decryptedCur = 0;
             break;
@@ -6682,7 +6684,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     MPDtlsChangeInterfaceHeader *cih = (MPDtlsChangeInterfaceHeader*) data;
     data += sizeof(MPDtlsChangeInterfaceHeader);
 
-    if (length != (sizeof(MPDtlsChangeInterfaceAddress) * cih->nbrAddrs
+    if (length != (sizeof(MPDtlsAddress) * cih->nbrAddrs
                     + sizeof(MPDtlsChangeInterfaceHeader))) {
         WOLFSSL_ERROR(BUFFER_E);
         return BUFFER_E;
@@ -6694,7 +6696,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     MpdtlsAddrsInit(&ma);
     
     for(i = 0; i < cih->nbrAddrs; i++) {
-        MPDtlsChangeInterfaceAddress *changeAddr =  ((MPDtlsChangeInterfaceAddress*) data) + i;
+        MPDtlsAddress *changeAddr =  ((MPDtlsAddress*) data) + i;
         byte isIPv6 = 0;
         int j;
         for(j = 0; j< 12 ; j++) {
@@ -6846,6 +6848,58 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         // We reset the threshold
         flow->r_stats.threshold = FEEDBACK_TX;
     }
+
+    // We have finished with that. "Empty" the buffer.
+    ssl->buffers.clearOutputBuffer.length = 0;
+
+    //otherwise we wait for another ack 
+    return 0;
+}
+
+static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
+    int ret;
+    MPDtlsWantConnect *wc;
+    if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
+        WOLFSSL_ERROR(ret);
+        return ret;
+    }
+    byte* data = ssl->buffers.clearOutputBuffer.buffer;
+    word32 length = ssl->buffers.clearOutputBuffer.length;
+
+    if (length != sizeof(MPDtlsWantConnect)) {
+        WOLFSSL_ERROR(BUFFER_E);
+        return BUFFER_E;
+    }
+    wc = (MPDtlsWantConnect *) data;
+
+    // TODO do something with the packet
+    (void)wc;
+
+    // We have finished with that. "Empty" the buffer.
+    ssl->buffers.clearOutputBuffer.length = 0;
+
+    return 0;
+}
+
+static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
+    int ret;
+    MPDtlsWantConnectAck *ack;
+    if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
+        WOLFSSL_ERROR(ret);
+        return ret;
+    }
+    byte* data = ssl->buffers.clearOutputBuffer.buffer;
+    word32 length = ssl->buffers.clearOutputBuffer.length;
+
+    if (length != sizeof(MPDtlsWantConnectAck)) {
+        WOLFSSL_ERROR(BUFFER_E);
+        return BUFFER_E;
+    }
+
+    ack = (MPDtlsWantConnectAck *) data;
+    
+    // TODO do something with the message
+    (void)ack;
 
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
@@ -7506,6 +7560,25 @@ int ProcessReply(WOLFSSL* ssl)
                 case feedback_ack:
                     WOLFSSL_MSG("Received Feedback Ack");
                      if ((ret = DoFeedbackAck(ssl, ssl->buffers.inputBuffer.buffer,
+                                            &ssl->buffers.inputBuffer.idx)) != 0) {
+                        WOLFSSL_ERROR(ret);
+                        return ret;
+                    }
+
+                    break;
+
+                case want_connect:
+                    WOLFSSL_MSG("Received WantConnect");
+                     if ((ret = DoWantConnect(ssl, ssl->buffers.inputBuffer.buffer,
+                                            &ssl->buffers.inputBuffer.idx)) != 0) {
+                        WOLFSSL_ERROR(ret);
+                        return ret;
+                    }
+                    break;
+
+                case want_connect_ack:
+                    WOLFSSL_MSG("Received WantConnect Ack");
+                     if ((ret = DoWantConnectAck(ssl, ssl->buffers.inputBuffer.buffer,
                                             &ssl->buffers.inputBuffer.idx)) != 0) {
                         WOLFSSL_ERROR(ret);
                         return ret;
@@ -8429,7 +8502,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 {
     int i;
     size_t sz = sizeof(MPDtlsChangeInterfaceHeader)
-              + addrs->nbrAddrs * sizeof(MPDtlsChangeInterfaceAddress);
+              + addrs->nbrAddrs * sizeof(MPDtlsAddress);
 
     byte output[sz];
 
@@ -8440,7 +8513,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
     for (i = 0; i< addrs->nbrAddrs ; i++){
 
         struct sockaddr *current_addr = (struct sockaddr *)(addrs->addrs + i);
-        MPDtlsChangeInterfaceAddress changeAddr;
+        MPDtlsAddress changeAddr;
 
         //we do not want to transmit part of the memory
         bzero(changeAddr.address, sizeof(changeAddr.address));
@@ -8457,8 +8530,8 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
             changeAddr.portNumber = htons(((struct sockaddr_in6 *) current_addr)->sin6_port);
         }
 
-        XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader) + sizeof(MPDtlsChangeInterfaceAddress) * i,
-                &changeAddr, sizeof(MPDtlsChangeInterfaceAddress));
+        XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader) + sizeof(MPDtlsAddress) * i,
+                &changeAddr, sizeof(MPDtlsAddress));
     }
 
     if (isReply == 1) {
@@ -8500,6 +8573,26 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     return SendPacket(ssl, (void*) &feed, sz, feedback);
 }
 
+int SendWantConnect(WOLFSSL *ssl, byte options) {
+    WOLFSSL_MSG("Send WantConnect");
+    size_t sz = sizeof(MPDtlsWantConnect);
+    MPDtlsWantConnect wc;
+    wc.opts = options;
+
+    // Todo complete the body
+
+    return SendPacket(ssl, (void*) &wc, sz, want_connect);
+}
+
+int SendWantConnectAck(WOLFSSL *ssl, int seq, byte options) {
+    WOLFSSL_MSG("Send WantConnectAck");
+    size_t sz = sizeof(MPDtlsWantConnect);
+    MPDtlsWantConnectAck ack;
+    ack.ack_sequence = seq;
+    ack.opts = options;
+
+    return SendPacket(ssl, (void*) &ack, sz, want_connect_ack);
+}
 
 int SendFeedbackAck(WOLFSSL *ssl, int seq) {
     WOLFSSL_MSG("Send feedback ack");
