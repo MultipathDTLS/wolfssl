@@ -240,7 +240,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
             }
             if(valid) {
                 InsertAddr(ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
-                mpdtlsAddNewFlow(ssl, (struct sockaddr*) &cl1, sz, (struct sockaddr*) &cl2, sz2, fd);
+                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cl1, sz, (struct sockaddr*) &cl2, sz2, fd, NULL);
             }
         }
 
@@ -511,7 +511,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
             if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
                 InsertAddr(ssl->mpdtls_host, host, hostSz);
                 //we must add a flow here as well
-                mpdtlsAddNewFlow(ssl, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl));
+                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl), NULL);
             }
         } else {
             WOLFSSL_MSG("Error on connect in set peer");

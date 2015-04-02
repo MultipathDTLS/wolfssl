@@ -1704,6 +1704,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsAddrsInit(&(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
+    MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows_waiting));
     MpdtlsAddrsRestore(ssl, &(ssl->mpdtls_host));
     ssl->mpdtls_pref_flow = NULL;
     timerclear(&ssl->mpdtls_last_cim);
@@ -1877,13 +1878,13 @@ int sockAddrEqualPort(const struct sockaddr * sa,
 * Return -1 if it's not found, -2 if error occured
 * return flow id if it's present
 */
-int mpdtlsIsFlowPresent(WOLFSSL* ssl, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
+int mpdtlsIsFlowPresent(MPDTLS_FLOWS *flows, const struct sockaddr *addrHost, const struct sockaddr *addrPeer) {
     WOLFSSL_ENTER("Is flow present ?");
-    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
+    MPDTLS_FLOW *flow = flows->flows;
     int i;
-    for (i = 0; i < ssl->mpdtls_flows->nbrFlows; i++) {
-        struct sockaddr_storage host = flows[i].host;
-        struct sockaddr_storage remote = flows[i].remote;
+    for (i = 0; i < flows->nbrFlows; i++) {
+        struct sockaddr_storage host = flow[i].host;
+        struct sockaddr_storage remote = flow[i].remote;
         int ret = sockAddrEqualAddr(addrHost, (struct sockaddr*) &host)
                 + sockAddrEqualPort(addrHost, (struct sockaddr*) &host)
                 + sockAddrEqualAddr(addrPeer, (struct sockaddr*) &remote)
@@ -1974,7 +1975,7 @@ int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct
 * Add a new flow for the specified hostaddr and remoteaddr
 * if socket is 0, we create a new one, otherwise we take this one (must be connected with the supplied addresses)
 */
-int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, const struct sockaddr* remoteaddr, int rSz, int sock) {
+int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr* hostaddr, int hSz, const struct sockaddr* remoteaddr, int rSz, int sock, MPDTLS_FLOW **res) {
     WOLFSSL_ENTER("AddNewFLow");
 
     int sd;
@@ -1986,17 +1987,17 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     } else {
         sd = sock;
     }
-    ssl->mpdtls_flows->nbrFlows++;
+    mp_flows->nbrFlows++;
     //we increase the size of the structure
     int sz = sizeof(MPDTLS_FLOW);
-    MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sz * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
+    MPDTLS_FLOW *flows =  (MPDTLS_FLOW *) XREALLOC(mp_flows->flows, sz * (mp_flows->nbrFlows), //maximum possible size
                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
-    MPDTLS_FLOW *cur_flow = &(flows[ssl->mpdtls_flows->nbrFlows-1]);
+    MPDTLS_FLOW *cur_flow = &(flows[mp_flows->nbrFlows-1]);
 
     XMEMSET(cur_flow,0,sz);
 
     //update the pointer
-    ssl->mpdtls_flows->flows = flows;
+    mp_flows->flows = flows;
 
     //we copy addresses
     XMEMCPY(&cur_flow->host, hostaddr, hSz);
@@ -2005,6 +2006,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->sock = sd;
 
     timerclear(&cur_flow->last_heartbeat);
+    cur_flow->wantConnectSeq = 0;
 
     //initialize stats
     cur_flow->r_stats.min_seq = INT_MAX;
@@ -2025,6 +2027,9 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
     cur_flow->s_stats.loss_rate = 0;
     cur_flow->s_stats.waiting_ack = 0;
 
+    if(res)
+        *res = cur_flow;
+
     return 0;
 }
 
@@ -2032,23 +2037,23 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, const struct sockaddr* hostaddr, int hSz, con
 * Remove a flow if it exists
 * 
 */
-void mpdtlsRemoveFlow(WOLFSSL *ssl, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
+void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
     WOLFSSL_ENTER("remove flow");
     int i;
-    int index = mpdtlsIsFlowPresent(ssl, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
+    int index = mpdtlsIsFlowPresent(flows, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
 
     if(index < 0) //no flow was present
         return;
-    MPDTLS_FLOW flow = ssl->mpdtls_flows->flows[index];
+    MPDTLS_FLOW flow = flows->flows[index];
     XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
-    for(i=index; i<ssl->mpdtls_flows->nbrFlows-1;i++) {
-        XMEMCPY(ssl->mpdtls_flows->flows + i, ssl->mpdtls_flows->flows + i + 1, sizeof(MPDTLS_FLOW));
+    for(i=index; i<flows->nbrFlows-1;i++) {
+        XMEMCPY(flows->flows + i, flows->flows + i + 1, sizeof(MPDTLS_FLOW));
     }
 
     //reduce the space needed
-    ssl->mpdtls_flows->nbrFlows--;
-    ssl->mpdtls_flows->flows =  (MPDTLS_FLOW *) XREALLOC(ssl->mpdtls_flows->flows, sizeof(MPDTLS_FLOW) * (ssl->mpdtls_flows->nbrFlows), //maximum possible size
+    flows->nbrFlows--;
+    flows->flows =  (MPDTLS_FLOW *) XREALLOC(flows->flows, sizeof(MPDTLS_FLOW) * (flows->nbrFlows), //maximum possible size
                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
 }
@@ -2095,6 +2100,7 @@ void SSL_ResourceFree(WOLFSSL* ssl)
     MpdtlsAddrsFree(&(ssl->mpdtls_host));
     MpdtlsSocksFree(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsFree(ssl, &(ssl->mpdtls_flows));
+    MpdtlsFlowsFree(ssl, &(ssl->mpdtls_flows_waiting));
 #endif
 
 #ifndef NO_CERTS
@@ -2739,6 +2745,52 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
 
         WOLFSSL_LEAVE("GetFreePortNumber", ntohs(ret));
         return ret;
+    }
+
+    void FromSockToMPDTLSAddr(MPDtlsAddress *changeAddr, struct sockaddr *current_addr) {
+
+        //we do not want to transmit part of the memory
+        bzero(changeAddr->address, sizeof(changeAddr->address));
+        if (current_addr->sa_family == AF_INET) {
+            //IPv4-Mapped IPv6 address -> see RFC4291
+              c16toa(0xffff,changeAddr->address+10);
+              c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr->address+12);
+
+            changeAddr->portNumber = htons(((struct sockaddr_in *) current_addr)->sin_port);
+        } else {
+            XMEMCPY(changeAddr->address,
+                    ((struct sockaddr_in6 *) current_addr)->sin6_addr.s6_addr,
+                    sizeof(struct in6_addr));
+            changeAddr->portNumber = htons(((struct sockaddr_in6 *) current_addr)->sin6_port);
+        }
+    }
+
+    void FromMPDTLSToSockAddr(struct sockaddr_storage* res, socklen_t* sz, MPDtlsAddress *changeAddr) {
+        byte isIPv6 = 0;
+        int j;
+        for(j = 0; j< 12 ; j++) {
+            byte test = (j<10) ? 0 : 0xff;
+            if(changeAddr->address[j]!=test) {
+                isIPv6 = 1;
+                break;
+            }
+        }
+
+        if(!isIPv6) {
+            struct sockaddr_in *addr = (struct sockaddr_in *) res;
+            addr->sin_family = AF_INET;
+            addr->sin_port = ntohs(changeAddr->portNumber);
+            u_int32_t addrTemp;
+            ato32((changeAddr->address+12), &addrTemp);
+            addr->sin_addr.s_addr = htonl(addrTemp);
+            *sz = sizeof(struct sockaddr_in);
+        } else {
+            struct sockaddr_in6 *addr = (struct sockaddr_in6 *) res;
+            addr->sin6_family = AF_INET6;
+            addr->sin6_port = ntohs(changeAddr->portNumber);
+            XMEMCPY(addr->sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
+            *sz = sizeof(struct sockaddr_in6);
+        }
     }
 
 #endif /* WOLFSSL_MPDTLS */
@@ -6697,31 +6749,10 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     
     for(i = 0; i < cih->nbrAddrs; i++) {
         MPDtlsAddress *changeAddr =  ((MPDtlsAddress*) data) + i;
-        byte isIPv6 = 0;
-        int j;
-        for(j = 0; j< 12 ; j++) {
-            byte test = (j<10) ? 0 : 0xff;
-            if(changeAddr->address[j]!=test) {
-                isIPv6 = 1;
-                break;
-            }
-        }
-
-        if(!isIPv6) {
-            struct sockaddr_in addr;
-            addr.sin_family = AF_INET;
-            addr.sin_port = ntohs(changeAddr->portNumber);
-            u_int32_t addrTemp;
-            ato32((changeAddr->address+12), &addrTemp);
-            addr.sin_addr.s_addr = htonl(addrTemp); 
-            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
-        } else {
-            struct sockaddr_in6 addr;
-            addr.sin6_family = AF_INET6;
-            addr.sin6_port = ntohs(changeAddr->portNumber);
-            XMEMCPY(addr.sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
-            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &addr, sizeof(struct sockaddr_in6));
-        }
+        struct sockaddr_storage res;
+        socklen_t sz;
+        FromMPDTLSToSockAddr(&res, &sz, changeAddr);
+        InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &res, sz);
     }
 
 #ifdef DEBUG_WOLFSSL
@@ -6872,8 +6903,19 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
     wc = (MPDtlsWantConnect *) data;
 
-    // TODO do something with the packet
-    (void)wc;
+    struct sockaddr_storage src, dst;
+    socklen_t src_sz, dst_sz;
+    FromMPDTLSToSockAddr(&src, &src_sz, &wc->address_dst);
+    FromMPDTLSToSockAddr(&dst, &dst_sz, &wc->address_src);
+
+    MPDTLS_FLOW *cur_flow;
+    mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
+                                    (struct sockaddr*) &dst, dst_sz, 0, &cur_flow);
+
+    gettimeofday(&cur_flow->last_heartbeat, NULL);
+
+    //send ack back
+
 
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
@@ -8515,20 +8557,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
         struct sockaddr *current_addr = (struct sockaddr *)(addrs->addrs + i);
         MPDtlsAddress changeAddr;
 
-        //we do not want to transmit part of the memory
-        bzero(changeAddr.address, sizeof(changeAddr.address));
-        if (current_addr->sa_family == AF_INET) {
-            //IPv4-Mapped IPv6 address -> see RFC4291
-              c16toa(0xffff,changeAddr.address+10);
-              c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr.address+12);
-
-            changeAddr.portNumber = htons(((struct sockaddr_in *) current_addr)->sin_port);
-        } else {
-            XMEMCPY(changeAddr.address,
-                    ((struct sockaddr_in6 *) current_addr)->sin6_addr.s6_addr,
-                    sizeof(struct in6_addr));
-            changeAddr.portNumber = htons(((struct sockaddr_in6 *) current_addr)->sin6_port);
-        }
+        FromSockToMPDTLSAddr(&changeAddr, current_addr);
 
         XMEMCPY(output + sizeof(MPDtlsChangeInterfaceHeader) + sizeof(MPDtlsAddress) * i,
                 &changeAddr, sizeof(MPDtlsAddress));
@@ -8573,13 +8602,21 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     return SendPacket(ssl, (void*) &feed, sz, feedback);
 }
 
-int SendWantConnect(WOLFSSL *ssl, byte options) {
+int SendWantConnect(WOLFSSL *ssl, byte options, struct sockaddr_storage *host, struct sockaddr_storage *remote) {
     WOLFSSL_MSG("Send WantConnect");
     size_t sz = sizeof(MPDtlsWantConnect);
     MPDtlsWantConnect wc;
     wc.opts = options;
+    MPDTLS_FLOW *cur_flow;
+    int ss_sz = sizeof(struct sockaddr_storage);
+    mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr *) host, ss_sz, (struct sockaddr *) remote, ss_sz, -1, &cur_flow);
 
-    // Todo complete the body
+    //we remember the seq number
+    cur_flow->wantConnectSeq = ssl->keys.dtls_sequence_number;
+    gettimeofday(&cur_flow->last_heartbeat, NULL);
+
+    FromSockToMPDTLSAddr(&wc.address_src, (struct sockaddr *) host);
+    FromSockToMPDTLSAddr(&wc.address_dst, (struct sockaddr *) remote);
 
     return SendPacket(ssl, (void*) &wc, sz, want_connect);
 }

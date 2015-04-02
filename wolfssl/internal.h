@@ -1294,6 +1294,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	struct sockaddr_storage host;               //a flow is determined by the host
     	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
     	int 					sock;               //reference the connected socket if it exists
+        int                     wantConnectSeq;     //sequence number of the last wantConnect packet sent
         struct timeval          last_heartbeat;     //last timestamp
     	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
     	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
@@ -1308,8 +1309,8 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsFlowsInit(WOLFSSL*, MPDTLS_FLOWS**);
     void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
 
-    int mpdtlsAddNewFlow(WOLFSSL *, const struct sockaddr*, int, const struct sockaddr*, int, int sock);
-    void mpdtlsRemoveFlow(WOLFSSL *, const struct sockaddr_storage*, const struct sockaddr_storage*);
+    int mpdtlsAddNewFlow(WOLFSSL *, MPDTLS_FLOWS*, const struct sockaddr*, int, const struct sockaddr*, int, int, MPDTLS_FLOW **);
+    void mpdtlsRemoveFlow(MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*);
     MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd);
     void updateReceiverStats(WOLFSSL*);
     void updateSenderStats(WOLFSSL*, int);
@@ -1317,7 +1318,7 @@ typedef struct WOLFSSL_DTLS_CTX {
  
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
-    int mpdtlsIsFlowPresent(WOLFSSL*, const struct sockaddr*, const struct sockaddr*);
+    int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
     int mpdtlsAddNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
 #endif /* WOLFSSL_MPDTLS */
 
@@ -2234,6 +2235,7 @@ struct WOLFSSL {
     MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
     MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
     MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
+    MPDTLS_FLOWS*   mpdtls_flows_waiting; /* waiting flows (not yet connected) */
     MPDTLS_FLOW*    mpdtls_pref_flow;   /* Force socket selection */
     struct timeval  mpdtls_last_cim;    /* Timestamp of last CIM */
 #endif
@@ -2547,7 +2549,7 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
     WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
     WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, int seq);
-    WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte);
+    WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte, struct sockaddr_storage*, struct sockaddr_storage*);
     WOLFSSL_LOCAL int SendWantConnectAck(WOLFSSL*, int, byte);
     WOLFSSL_LOCAL int InsertSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSock(MPDTLS_SOCKS*, int);
@@ -2556,6 +2558,8 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int DeleteAddr(MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
     WOLFSSL_LOCAL int DeleteAddrbyIndex(MPDTLS_ADDRS*, int);
     WOLFSSL_LOCAL int GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL void FromSockToMPDTLSAddr(MPDtlsAddress*, struct sockaddr*);
+    WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, socklen_t*, MPDtlsAddress*);
 #endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS
