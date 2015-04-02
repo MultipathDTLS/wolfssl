@@ -1935,7 +1935,7 @@ int mpdtlsIsAddrPresent(MPDTLS_ADDRS *addrs, const struct sockaddr *addr_cmp) {
 * Return -2 if it cannot bind
 * Return -3 if it cannot connect
 */
-int mpdtlsAddNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct sockaddr* peeraddr, int *result) {
+int mpdtlsGetNewSock(WOLFSSL *ssl, const struct sockaddr* hostaddr, const struct sockaddr* peeraddr, int *result) {
     WOLFSSL_ENTER("Add new sock");
 
     socklen_t sz = 0;
@@ -2005,7 +2005,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
     int sd;
     //we first verify if we can add a socket for these addresses
     if(sock == 0) {
-        if(mpdtlsAddNewSock(ssl, hostaddr, remoteaddr,&sd) != 0) {
+        if(mpdtlsGetNewSock(ssl, hostaddr, remoteaddr,&sd) != 0) {
             return 1;
         }
     } else {
@@ -2061,7 +2061,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
 * Remove a flow if it exists
 * 
 */
-void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr) {
+void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int *sd) {
     WOLFSSL_ENTER("remove flow");
     int i;
     int index = mpdtlsIsFlowPresent(flows, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
@@ -2075,6 +2075,13 @@ void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostad
         XMEMCPY(flows->flows + i, flows->flows + i + 1, sizeof(MPDTLS_FLOW));
     }
 
+    if(sd == NULL) {
+        if (flow.sock > 0)
+            close(flow.sock);
+    } else {
+        *sd = flow.sock;
+    }
+
     //reduce the space needed
     flows->nbrFlows--;
     flows->flows =  (MPDTLS_FLOW *) XREALLOC(flows->flows, sizeof(MPDTLS_FLOW) * (flows->nbrFlows), //maximum possible size
@@ -2086,12 +2093,12 @@ void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostad
 * return the flow associated to a particular socket sd, useful to upate stats
 * return NULL is no such flow exists
 */
-MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd) {
+MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS *flows, int sd) {
     int i;
-    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
-    for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++ ) {
-        if(flows[i].sock == sd) {
-            return &flows[i];
+    MPDTLS_FLOW *flow = flows->flows;
+    for(i=0; i< flows->nbrFlows; i++ ) {
+        if(flow[i].sock == sd) {
+            return &flow[i];
         }
     } 
 
@@ -6837,7 +6844,7 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     feed = (MPDtlsFeedback *) data;
 
     int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
-    MPDTLS_FLOW *flow = getFlowFromSocket(ssl,fd);
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl->mpdtls_flows,fd);
 
     //update the forward delay
     flow->s_stats.forward_delay = feed->forward_delay;
@@ -6898,7 +6905,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
 
     int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
-    MPDTLS_FLOW *flow = getFlowFromSocket(ssl,fd);
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl->mpdtls_flows,fd);
 
     ack = (MPDtlsFeedbackAck *) data;
     //we verify if it matches the last sent feedback
@@ -6982,7 +6989,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     ack = (MPDtlsWantConnectAck *) data;
     
-    MPDTLS_FLOW *cur_flow;
+    MPDTLS_FLOW *cur_flow = NULL;
     //we look for the corresponding flow
     for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
         if(ssl->mpdtls_flows_waiting->flows[i].wantConnectSeq == ack->ack_sequence) {
@@ -6991,16 +6998,18 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
 
     if(cur_flow != NULL) {
-        if((ack->opts & 0x80) == 0x80) {
+        if(ack->opts & 0x80) {
             //the flow must be considered as alive
             WOLFSSL_MSG("New alive flow");
             //move the waiting flow to alive flow
-
+            int ss_sz = sizeof(struct sockaddr_storage);
+            mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cur_flow->host, ss_sz,
+                             (struct sockaddr*) &cur_flow->remote, ss_sz, 0, NULL);
         } else {
             //we must delete the flow, no connection is possible
             WOLFSSL_MSG("We must delete the flow");
-            mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote);
         }
+        mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote, NULL);
     }
     //if we don't find such a flow, we do nothing
 
@@ -7051,7 +7060,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
 #ifdef WOLFSSL_MPDTLS
         case HEARTBEAT_TIMESTAMP: ;
             //we compute the forward delay
-            MPDTLS_FLOW *cur_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd);
+            MPDTLS_FLOW *cur_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
             struct timeval *remote = (struct timeval *) (input + *inOutIdx);
             struct timeval host, res;
             gettimeofday(&host,NULL);
@@ -7068,7 +7077,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
 
         case HEARTBEAT_REQUEST:
 #ifdef WOLFSSL_MPDTLS
-            ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, ssl->buffers.dtlsCtx.fd); 
+            ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd); 
 #endif
             ret = SendHeartbeatMessage(ssl, HEARTBEAT_RESPONSE, payload_length, input + *inOutIdx);
             break;
@@ -7506,6 +7515,7 @@ int ProcessReply(WOLFSSL* ssl)
             #ifdef WOLFSSL_MPDTLS
             //update stats
             if(ssl->options.handShakeState == HANDSHAKE_DONE && ssl->options.mpdtls) {
+                checkForWaitingFlow(ssl);
                 updateReceiverStats(ssl);
             }
             #endif
@@ -7895,7 +7905,7 @@ void updateReceiverStats(WOLFSSL* ssl) {
     int seqNumber = ssl->keys.dtls_state.curSeq;
     int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
 
-    flow = getFlowFromSocket(ssl,fd);
+    flow = getFlowFromSocket(ssl->mpdtls_flows,fd);
     if(flow!=NULL) {
         flow->r_stats.nbr_packets_received++;
         if(seqNumber > flow->r_stats.max_seq) {
@@ -7920,7 +7930,7 @@ void updateSenderStats(WOLFSSL* ssl, int fd) {
     MPDTLS_FLOW* flow;
     int seqNumber = ssl->keys.dtls_sequence_number-1;
 
-    flow = getFlowFromSocket(ssl, fd);
+    flow = getFlowFromSocket(ssl->mpdtls_flows, fd);
 
     if (flow != NULL) {
         if (flow->s_stats.capacity == flow->s_stats.nbr_packets_sent) {
@@ -7936,7 +7946,7 @@ void updateSenderStats(WOLFSSL* ssl, int fd) {
 
 void checkTimeouts(WOLFSSL *ssl, int fd) {
     //We check if we need to send any heartbeat
-    MPDTLS_FLOW *flow = getFlowFromSocket(ssl, fd);
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl->mpdtls_flows, fd);
     struct timeval now, offset, validity_limit;
     gettimeofday(&now, NULL);
     timerclear(&offset);
@@ -7960,7 +7970,22 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         SendChangeInterface(ssl, ssl->mpdtls_host, 1);
     }
 }
-#endif
+
+void checkForWaitingFlow(WOLFSSL *ssl) {
+    MPDTLS_FLOW *flow = getFlowFromSocket(ssl->mpdtls_flows_waiting, ssl->buffers.dtlsCtx.fd);
+    if (flow != NULL) {
+        //transfer flow
+        int ss_sz = sizeof(struct sockaddr_storage);
+        int fd;
+        MPDTLS_FLOW *new_flow;
+        mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &flow->host, ss_sz,
+                             (struct sockaddr*) &flow->remote, ss_sz, -1, &new_flow);
+        mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &flow->host, &flow->remote, &fd);
+        new_flow->sock = fd;
+    }
+}
+
+#endif /* WOLFSSL_MPDTLS */
 
 
 #ifndef NO_OLD_TLS

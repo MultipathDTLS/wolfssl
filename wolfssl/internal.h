@@ -1310,17 +1310,18 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
 
     int mpdtlsAddNewFlow(WOLFSSL *, MPDTLS_FLOWS*, const struct sockaddr*, int, const struct sockaddr*, int, int, MPDTLS_FLOW **);
-    void mpdtlsRemoveFlow(MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*);
-    MPDTLS_FLOW* getFlowFromSocket(WOLFSSL *ssl, int sd);
+    void mpdtlsRemoveFlow(MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*, int*);
+    MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS*, int);
     void updateReceiverStats(WOLFSSL*);
     void updateSenderStats(WOLFSSL*, int);
     void checkTimeouts(WOLFSSL*, int);
+    void checkForWaitingFlow(WOLFSSL*);
  
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
     int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
     int mpdtlsIsAddrPresent(MPDTLS_ADDRS*, const struct sockaddr*);
-    int mpdtlsAddNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
+    int mpdtlsGetNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
 #endif /* WOLFSSL_MPDTLS */
 
 
