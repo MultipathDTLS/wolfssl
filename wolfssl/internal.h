@@ -1319,6 +1319,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
     int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
     int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
+    int mpdtlsIsAddrPresent(MPDTLS_ADDRS*, const struct sockaddr*);
     int mpdtlsAddNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
 #endif /* WOLFSSL_MPDTLS */
 

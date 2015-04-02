@@ -1901,6 +1901,30 @@ int mpdtlsIsFlowPresent(MPDTLS_FLOWS *flows, const struct sockaddr *addrHost, co
 
 }
 
+/**
+* Test if one address is already present with sockaddr addr
+* Return -1 if it's not found, -2 if error occured
+* return address id if it's present
+*/
+int mpdtlsIsAddrPresent(MPDTLS_ADDRS *addrs, const struct sockaddr *addr_cmp) {
+    WOLFSSL_ENTER("Is addr present ?");
+    struct sockaddr_storage *addr = addrs->addrs;
+    int i;
+    for (i = 0; i < addrs->nbrAddrs; i++) {
+        int ret = sockAddrEqualAddr(addr_cmp, (struct sockaddr*) (addr + i))
+                + sockAddrEqualPort(addr_cmp, (struct sockaddr*) (addr + i));
+        if (ret < 0)
+            return -2;
+        if (ret == 2){
+            WOLFSSL_LEAVE("Is addr present ?",i);
+            return i;
+        }
+    }
+    WOLFSSL_LEAVE("Is addr present ?",-1);
+    return -1;
+
+}
+
 
 
 /**
@@ -3115,12 +3139,25 @@ retry:
         int i, result=0, maxfd = 0, sd;
         FD_ZERO(&recvfds);
         FD_ZERO(&errfds);
+
+        //alive flows
         for (i=0; i< ssl->mpdtls_flows->nbrFlows;i++) {
             sd = ssl->mpdtls_flows->flows[i].sock;
             FD_SET(sd,&recvfds);
             FD_SET(sd,&errfds);
             if(sd > maxfd)
                 maxfd = sd;
+        }
+
+        //waiting flows
+        for (i=0; i< ssl->mpdtls_flows_waiting->nbrFlows;i++) {
+            sd = ssl->mpdtls_flows_waiting->flows[i].sock;
+            if(sd > 0) { //if we already have a socket
+                FD_SET(sd,&recvfds);
+                FD_SET(sd,&errfds);
+                if(sd > maxfd)
+                    maxfd = sd;
+            }
         }
 
         result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
@@ -6905,18 +6942,23 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     struct sockaddr_storage src, dst;
     socklen_t src_sz, dst_sz;
+    byte opts = wc->opts;
     FromMPDTLSToSockAddr(&src, &src_sz, &wc->address_dst);
     FromMPDTLSToSockAddr(&dst, &dst_sz, &wc->address_src);
 
-    MPDTLS_FLOW *cur_flow;
-    mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
-                                    (struct sockaddr*) &dst, dst_sz, 0, &cur_flow);
+    //if addresses were effectively announced, we accept the connection
+    if(mpdtlsIsAddrPresent(ssl->mpdtls_host, (struct sockaddr *) &src) >= 0 && 
+        mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &dst) >= 0 ) {
+        MPDTLS_FLOW *cur_flow;
+        mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
+                                        (struct sockaddr*) &dst, dst_sz, 0, &cur_flow);
 
-    gettimeofday(&cur_flow->last_heartbeat, NULL);
-
+        gettimeofday(&cur_flow->last_heartbeat, NULL);
+    } else { //if we refuse the connection
+        opts |= 0x80; 
+    }
     //send ack back
-
-
+    SendWantConnectAck(ssl, ssl->keys.dtls_state.curSeq, opts);
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
 
@@ -6924,7 +6966,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 }
 
 static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
-    int ret;
+    int ret,i;
     MPDtlsWantConnectAck *ack;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
@@ -6940,8 +6982,27 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     ack = (MPDtlsWantConnectAck *) data;
     
-    // TODO do something with the message
-    (void)ack;
+    MPDTLS_FLOW *cur_flow;
+    //we look for the corresponding flow
+    for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
+        if(ssl->mpdtls_flows_waiting->flows[i].wantConnectSeq == ack->ack_sequence) {
+            cur_flow = ssl->mpdtls_flows_waiting->flows + i;
+        }
+    }
+
+    if(cur_flow != NULL) {
+        if((ack->opts & 0x80) == 0x80) {
+            //the flow must be considered as alive
+            WOLFSSL_MSG("New alive flow");
+            //move the waiting flow to alive flow
+
+        } else {
+            //we must delete the flow, no connection is possible
+            WOLFSSL_MSG("We must delete the flow");
+            mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote);
+        }
+    }
+    //if we don't find such a flow, we do nothing
 
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
