@@ -7962,6 +7962,8 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, sizeof(now), (byte*) &now);
     }
 
+    // TODO Clean Waiting FLOWS and resend Waiting WantConnect
+
     // TODO change the validity limit
 
     if (timerisset(&ssl->mpdtls_last_cim)
@@ -8714,6 +8716,7 @@ int SendWantConnectAck(WOLFSSL *ssl, int seq, byte options) {
     ack.ack_sequence = seq;
     ack.opts = options;
 
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, seq);
     return SendPacket(ssl, (void*) &ack, sz, want_connect_ack);
 }
 
@@ -8723,6 +8726,7 @@ int SendFeedbackAck(WOLFSSL *ssl, int seq) {
     MPDtlsFeedbackAck ack;
     ack.seq = seq;
 
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, seq);
     return SendPacket(ssl, (void*) &ack, sz, feedback_ack);
 }
 #endif 
