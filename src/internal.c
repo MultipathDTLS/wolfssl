@@ -2824,6 +2824,29 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }
 
+    /**
+    * Fill namebuf with a readable IP address and port number
+    * namebuf must be initialized with enough space (at least 50 for IPv6 and 22 for IPv4)
+    */
+    int FromSockToPrint(struct sockaddr* addr, int sz, char *namebuf) {
+        int buf_sz = 0, port_sz = 0;
+        char portbuf[6];
+        getnameinfo(addr,  sz, namebuf, sizeof(namebuf)-7,
+            portbuf, sizeof(portbuf), NI_NUMERICHOST);
+        while(namebuf[buf_sz] != '\0') {
+            buf_sz++;
+        }
+        if(addr->sa_family == AF_INET) {
+            namebuf[buf_sz++] = ':';
+        } else {
+            namebuf[buf_sz++] = '/';
+        }
+        while(portbuf[port_sz] != '\0') {
+            namebuf[buf_sz++] = portbuf[port_sz++];
+        }
+        return buf_sz;
+    }
+
 #endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_OLD_TLS
@@ -8716,7 +8739,7 @@ int SendWantConnectAck(WOLFSSL *ssl, int seq, byte options) {
     ack.ack_sequence = seq;
     ack.opts = options;
 
-    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, seq);
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, seq);
     return SendPacket(ssl, (void*) &ack, sz, want_connect_ack);
 }
 
@@ -8726,7 +8749,7 @@ int SendFeedbackAck(WOLFSSL *ssl, int seq) {
     MPDtlsFeedbackAck ack;
     ack.seq = seq;
 
-    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl, seq);
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, seq);
     return SendPacket(ssl, (void*) &ack, sz, feedback_ack);
 }
 #endif 
