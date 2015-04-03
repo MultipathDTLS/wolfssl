@@ -387,6 +387,54 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
     return SSL_SUCCESS;
 }
 
+int wolfSSL_mpdtls_ask_connect(WOLFSSL *ssl, char **outbuf, size_t *sz) {
+    MPDTLS_ADDRS *src = ssl->mpdtls_host, *dst = ssl->mpdtls_remote;
+
+    size_t MaxSize = (src->nbrAddrs + dst->nbrAddrs) * (50) + 50;
+    if (sz == NULL || *sz < MaxSize) {
+        *outbuf = (char *) XREALLOC(*outbuf, MaxSize, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    }
+
+    int i, offset = 0;
+    offset += sprintf(*outbuf + offset, "*** Host addresses ***");
+
+    for (i = 0; i < src->nbrAddrs; i++) {
+        offset += sprintf(*outbuf + offset, "\n%d) ", i);
+        offset += FromSockToPrint((struct sockaddr *) &src->addrs[i],
+                                   sizeof(struct sockaddr_storage),
+                                   *outbuf + offset, MaxSize - offset);
+    }
+
+    offset += sprintf(*outbuf + offset, "\n*** Server addresses ***");
+    for (i = 0; i < dst->nbrAddrs; i++) {
+        offset += sprintf(*outbuf + offset, "\n%d) ", i);
+        offset += FromSockToPrint((struct sockaddr *) &dst->addrs[i],
+                                   sizeof(struct sockaddr_storage),
+                                   *outbuf + offset, MaxSize - offset);
+    }
+
+    (*outbuf)[offset] = '\0';
+    if (sz != NULL)
+        *sz = offset;
+
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_connect_addr(WOLFSSL* ssl, int src_idx, int dst_idx)
+{
+    MPDTLS_ADDRS *host = ssl->mpdtls_host, *remote = ssl->mpdtls_remote;
+
+    if (src_idx < 0 || src_idx >= host->nbrAddrs || dst_idx < 0 || dst_idx >= remote->nbrAddrs) {
+        WOLFSSL_MSG("Index out of range");
+        return SSL_FAILURE;
+    }
+
+    if (SendWantConnect(ssl, 0x0, &host->addrs[src_idx], &remote->addrs[dst_idx]) > 0) {
+        return SSL_SUCCESS;
+    }
+    return SSL_FAILURE;
+}
+
 int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
 {
     int error, n = 0;
