@@ -2695,7 +2695,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         addrs->nbrAddrs++;
         addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
                                       sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
-                                      ssl->heap, DYNAMIC_TYPE_MPDTLS);
+                                      NULL, DYNAMIC_TYPE_MPDTLS);
 
         /* We add one new address at the end of the existing ones */
 
@@ -6835,10 +6835,10 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
         return BUFFER_E;
     }
 
-    MPDTLS_ADDRS* ma = ssl->mpdtls_remote;
+    MPDTLS_ADDRS** ma = &ssl->mpdtls_remote;
     /* We empty the structure and rebuild it */
-    MpdtlsAddrsFree(&ma);
-    MpdtlsAddrsInit(&ma);
+    MpdtlsAddrsFree(ma);
+    MpdtlsAddrsInit(ma);
     
     for(i = 0; i < cih->nbrAddrs; i++) {
         MPDtlsAddress *changeAddr =  ((MPDtlsAddress*) data) + i;
@@ -6852,10 +6852,10 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     int j;
     char namebuf[BUFSIZ];
     WOLFSSL_MSG("Remote IPs");
-    for (j = 0; j < ma->nbrAddrs; j++) {
+    for (j = 0; j < (*ma)->nbrAddrs; j++) {
         //XMEMSET(namebuf, 0, BUFSIZ);
         /* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
-        getnameinfo((struct sockaddr *) (ma->addrs + j),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+        getnameinfo((struct sockaddr *) ((*ma)->addrs + j),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
         WOLFSSL_MSG(namebuf);
     }
@@ -7005,12 +7005,23 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     //if addresses were effectively announced, we accept the connection
     if(mpdtlsIsAddrPresent(ssl->mpdtls_host, (struct sockaddr *) &src) >= 0 && 
         mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &dst) >= 0 ) {
+        //we check is a flow is already running
+        int index1, index2;
         MPDTLS_FLOW *cur_flow;
-        if (mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
-                                        (struct sockaddr*) &dst, dst_sz, 0, &cur_flow) != 0) {
-            WOLFSSL_MSG("Cannot create socket");
-            opts |= 0x80;
-        } else {
+
+        index1 =  mpdtlsIsFlowPresent(ssl->mpdtls_flows, (struct sockaddr *) &src, (struct sockaddr *) &dst);
+        index2 =  mpdtlsIsFlowPresent(ssl->mpdtls_flows_waiting, (struct sockaddr *) &src, (struct sockaddr *) &dst);
+        if(index1 == -1 && index2 == -1) {
+            if (mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
+                                            (struct sockaddr*) &dst, dst_sz, 0, &cur_flow) != 0) {
+                WOLFSSL_MSG("Cannot create socket");
+                opts |= 0x80;
+            } else {
+                gettimeofday(&cur_flow->last_heartbeat, NULL);
+            }
+        } else if(index2 > -1) {
+            //we reset the timer for the flow running if it is waiting
+            cur_flow = &ssl->mpdtls_flows_waiting->flows[index2];
             gettimeofday(&cur_flow->last_heartbeat, NULL);
         }
     } else { //if we refuse the connection

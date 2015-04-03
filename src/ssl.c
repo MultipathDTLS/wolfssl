@@ -429,6 +429,12 @@ int wolfSSL_mpdtls_connect_addr(WOLFSSL* ssl, int src_idx, int dst_idx)
         return SSL_FAILURE;
     }
 
+    if(mpdtlsIsFlowPresent(ssl->mpdtls_flows, (struct sockaddr *) &host->addrs[src_idx], (struct sockaddr *) &remote->addrs[dst_idx])
+        + mpdtlsIsFlowPresent(ssl->mpdtls_flows_waiting, (struct sockaddr *) &host->addrs[src_idx], (struct sockaddr *) &remote->addrs[dst_idx]) != -2){
+        WOLFSSL_MSG("Such a flow is already present");
+        return SSL_FAILURE;
+    }
+
     if (SendWantConnect(ssl, 0x0, &host->addrs[src_idx], &remote->addrs[dst_idx], NULL) > 0) {
         return SSL_SUCCESS;
     }
