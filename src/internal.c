@@ -8818,7 +8818,7 @@ int SendWantConnectAck(WOLFSSL *ssl, uint seq, byte options) {
     c32to48(seq, ack.ack_sequence);
     ack.opts = options;
 
-    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, seq);
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
     return SendPacket(ssl, (void*) &ack, sz, want_connect_ack);
 }
 
@@ -8828,7 +8828,7 @@ int SendFeedbackAck(WOLFSSL *ssl, uint seq) {
     MPDtlsFeedbackAck ack;
     c32to48(seq, ack.seq);
 
-    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, seq);
+    ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
     return SendPacket(ssl, (void*) &ack, sz, feedback_ack);
 }
 #endif 
