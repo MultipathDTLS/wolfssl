@@ -429,7 +429,7 @@ int wolfSSL_mpdtls_connect_addr(WOLFSSL* ssl, int src_idx, int dst_idx)
         return SSL_FAILURE;
     }
 
-    if (SendWantConnect(ssl, 0x0, &host->addrs[src_idx], &remote->addrs[dst_idx]) > 0) {
+    if (SendWantConnect(ssl, 0x0, &host->addrs[src_idx], &remote->addrs[dst_idx], NULL) > 0) {
         return SSL_SUCCESS;
     }
     return SSL_FAILURE;

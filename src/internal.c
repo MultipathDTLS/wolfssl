@@ -2061,13 +2061,21 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
 * Remove a flow if it exists
 * 
 */
-void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int *sd) {
-    WOLFSSL_ENTER("remove flow");
-    int i;
+void mpdtlsRemoveFlow(WOLFSSL *ssl, MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int *sd) {
     int index = mpdtlsIsFlowPresent(flows, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
 
     if(index < 0) //no flow was present
         return;
+    mpdtlsRemoveFlowByIndex(ssl, flows, index, sd);
+
+}
+
+/**
+* Remove the flow in a given index
+*/
+void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int index, int *sd) {
+    WOLFSSL_ENTER("Remove flow");
+    int i;
     MPDTLS_FLOW flow = flows->flows[index];
     XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
@@ -2076,8 +2084,10 @@ void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostad
     }
 
     if(sd == NULL) {
-        if (flow.sock > 0)
-            close(flow.sock);
+        if (flow.sock > 0) {
+            //get back to the pool
+            InsertSock(ssl->mpdtls_pool, flow.sock);
+        }
     } else {
         *sd = flow.sock;
     }
@@ -2086,7 +2096,6 @@ void mpdtlsRemoveFlow(MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostad
     flows->nbrFlows--;
     flows->flows =  (MPDTLS_FLOW *) XREALLOC(flows->flows, sizeof(MPDTLS_FLOW) * (flows->nbrFlows), //maximum possible size
                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
-
 }
 
 /**
@@ -7052,7 +7061,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             //we must delete the flow, no connection is possible
             WOLFSSL_MSG("We must delete the flow");
         }
-        mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote, NULL);
+        mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote, NULL);
     }
     //if we don't find such a flow, we do nothing
 
@@ -7993,7 +8002,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
     struct timeval now, offset, validity_limit;
     gettimeofday(&now, NULL);
     timerclear(&offset);
-    offset.tv_sec = 10;
+    offset.tv_sec = HEARTBEAT_TX;
 
     timersub(&now, &offset, &validity_limit);
 
@@ -8005,14 +8014,32 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, sizeof(now), (byte*) &now);
     }
 
-    // TODO Clean Waiting FLOWS and resend Waiting WantConnect
-
-    // TODO change the validity limit
+    gettimeofday(&now, NULL);
+    offset.tv_sec = CIM_RTX;
+    timersub(&now, &offset, &validity_limit);
 
     if (timerisset(&ssl->mpdtls_last_cim)
      && timercmp(&ssl->mpdtls_last_cim, &validity_limit, <)) {
         WOLFSSL_MSG("Retransmit the CIM");
         SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+    }
+
+    //Clean Waiting FLOWS and resend Waiting WantConnect
+    gettimeofday(&now, NULL);
+    offset.tv_sec = FLOW_RETRY;
+    timersub(&now, &offset, &validity_limit);
+    int i;
+    for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
+        MPDTLS_FLOW *cur_flow = ssl->mpdtls_flows_waiting->flows + i;
+        if(timercmp(&cur_flow->last_heartbeat, &validity_limit, <)) {
+            WOLFSSL_MSG("FLOW waiting for too long");
+            if(cur_flow->wantConnectSeq != 0) { //initiator side
+                //we retransmit
+                SendWantConnect(ssl, 0x0, NULL, NULL, cur_flow);
+            } else { // acceptor side, the flow is not used we delete it
+                mpdtlsRemoveFlowByIndex(ssl, ssl->mpdtls_flows_waiting,i,NULL);
+            }
+        }
     }
 }
 
@@ -8025,7 +8052,7 @@ void checkForWaitingFlow(WOLFSSL *ssl) {
         MPDTLS_FLOW *new_flow;
         mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &flow->host, ss_sz,
                              (struct sockaddr*) &flow->remote, ss_sz, -1, &new_flow);
-        mpdtlsRemoveFlow(ssl->mpdtls_flows_waiting, &flow->host, &flow->remote, &fd);
+        mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows_waiting, &flow->host, &flow->remote, &fd);
         new_flow->sock = fd;
     }
 }
@@ -8733,21 +8760,30 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     return SendPacket(ssl, (void*) &feed, sz, feedback);
 }
 
-int SendWantConnect(WOLFSSL *ssl, byte options, struct sockaddr_storage *host, struct sockaddr_storage *remote) {
+/**
+*   Send a WantConnect message with the given options
+*   if the flow is supplied in rtx, then host and remote can be null
+*/
+int SendWantConnect(WOLFSSL *ssl, byte options, struct sockaddr_storage *host, struct sockaddr_storage *remote, MPDTLS_FLOW *rtx) {
     WOLFSSL_MSG("Send WantConnect");
     size_t sz = sizeof(MPDtlsWantConnect);
     MPDtlsWantConnect wc;
     wc.opts = options;
     MPDTLS_FLOW *cur_flow;
-    int ss_sz = sizeof(struct sockaddr_storage);
-    mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr *) host, ss_sz, (struct sockaddr *) remote, ss_sz, -1, &cur_flow);
-
+    //first time we send the msg
+    if(rtx == NULL) {
+        int ss_sz = sizeof(struct sockaddr_storage);
+        mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr *) host, ss_sz, (struct sockaddr *) remote, ss_sz, -1, &cur_flow);
+    } else {
+        cur_flow = rtx;
+    }
+    FromSockToMPDTLSAddr(&wc.address_src, (struct sockaddr *) &cur_flow->host);
+    FromSockToMPDTLSAddr(&wc.address_dst, (struct sockaddr *) &cur_flow->remote);
     //we remember the seq number
     cur_flow->wantConnectSeq = ssl->keys.dtls_sequence_number;
     gettimeofday(&cur_flow->last_heartbeat, NULL);
 
-    FromSockToMPDTLSAddr(&wc.address_src, (struct sockaddr *) host);
-    FromSockToMPDTLSAddr(&wc.address_dst, (struct sockaddr *) remote);
+
 
     return SendPacket(ssl, (void*) &wc, sz, want_connect);
 }

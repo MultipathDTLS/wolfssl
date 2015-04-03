@@ -1264,10 +1264,13 @@ typedef struct WOLFSSL_DTLS_CTX {
 
     #define FEEDBACK_TX  5
     #define FEEDBACK_RTX 2
-
     #define FEEDBACK_CAPACITY 10
 
     #define EWMA_ALPHA 0.875
+
+    #define HEARTBEAT_TX 10
+    #define CIM_RTX 10
+    #define FLOW_RETRY 30
 
     typedef struct MPDTLS_SENDER_STATS {
     	int* 		packets_sent;       //sequence number of packets sent
@@ -1310,7 +1313,8 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
 
     int mpdtlsAddNewFlow(WOLFSSL *, MPDTLS_FLOWS*, const struct sockaddr*, int, const struct sockaddr*, int, int, MPDTLS_FLOW **);
-    void mpdtlsRemoveFlow(MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*, int*);
+    void mpdtlsRemoveFlow(WOLFSSL*, MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*, int*);
+    void mpdtlsRemoveFlowByIndex(WOLFSSL*, MPDTLS_FLOWS*, int, int*);
     MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS*, int);
     void updateReceiverStats(WOLFSSL*);
     void updateSenderStats(WOLFSSL*, int);
@@ -2551,7 +2555,7 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
     WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
     WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, int seq);
-    WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte, struct sockaddr_storage*, struct sockaddr_storage*);
+    WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte, struct sockaddr_storage*, struct sockaddr_storage*, MPDTLS_FLOW*);
     WOLFSSL_LOCAL int SendWantConnectAck(WOLFSSL*, int, byte);
     WOLFSSL_LOCAL int InsertSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSock(MPDTLS_SOCKS*, int);
