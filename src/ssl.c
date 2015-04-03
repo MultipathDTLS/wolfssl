@@ -474,10 +474,12 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
     int bufSz, i,j;
     bufSz = ssl->mpdtls_flows->nbrFlows * 4000;
     char buf[bufSz];
+    buf[0] = '\0';
+
     MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
     for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++) {
         char namebuf[50];
-        sprintf(buf,"---- Stats for Flow N° %d ---- \n",i);
+        sprintf(buf,"%s---- Stats for Flow N° %d ---- \n",buf, i);
         getnameinfo((struct sockaddr *) &(flows[i].host),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
         sprintf(buf,"%sIP src : %s \n",buf,namebuf);

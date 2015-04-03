@@ -2807,6 +2807,8 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
             }
         }
 
+        XMEMSET(res, 0, sizeof(struct sockaddr_storage));
+
         if(!isIPv6) {
             struct sockaddr_in *addr = (struct sockaddr_in *) res;
             addr->sin_family = AF_INET;
@@ -2829,10 +2831,10 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
     * namebuf must be initialized with enough space (at least 50 for IPv6 and 22 for IPv4)
     * return the number of character written (except the ending 0)
     */
-    int FromSockToPrint(struct sockaddr* addr, int sz, char *namebuf) {
+    int FromSockToPrint(struct sockaddr* addr, int sz, char *namebuf, int bufsz) {
         int buf_sz = 0, port_sz = 0;
         char portbuf[6];
-        getnameinfo(addr,  sz, namebuf, sizeof(namebuf)-7,
+        getnameinfo(addr,  sz, namebuf, bufsz,
             portbuf, sizeof(portbuf), NI_NUMERICHOST);
         while(namebuf[buf_sz] != '\0') {
             buf_sz++;
@@ -3195,15 +3197,28 @@ retry:
         result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
         WOLFSSL_LEAVE("Select", result);
         if (result!=0) {
-            for (i=0; i< ssl->mpdtls_flows->nbrFlows;i++) {
-                sd = ssl->mpdtls_flows->flows[i].sock;
-                if(FD_ISSET(sd,&recvfds)) {
-                    ssl->buffers.dtlsCtx.fd = sd;
-                    break;
+            for (i=0; i < max(ssl->mpdtls_flows->nbrFlows, ssl->mpdtls_flows_waiting->nbrFlows); i++) {
+                if (i < ssl->mpdtls_flows->nbrFlows) {
+                    sd = ssl->mpdtls_flows->flows[i].sock;
+                    if(FD_ISSET(sd,&recvfds)) {
+                        ssl->buffers.dtlsCtx.fd = sd;
+                        break;
+                    }
+                    if (FD_ISSET(sd, &errfds)) {
+                        WOLFSSL_MSG("Error from select");
+                        goto retry;
+                    }
                 }
-                if (FD_ISSET(sd, &errfds)) {
-                    WOLFSSL_MSG("Error from select");
-                    goto retry;
+                if (i < ssl->mpdtls_flows_waiting->nbrFlows) {
+                    sd = ssl->mpdtls_flows_waiting->flows[i].sock;
+                    if(FD_ISSET(sd,&recvfds)) {
+                        ssl->buffers.dtlsCtx.fd = sd;
+                        break;
+                    }
+                    if (FD_ISSET(sd, &errfds)) {
+                        WOLFSSL_MSG("Error from select");
+                        goto retry;
+                    }
                 }
             }
         } else { // TIME OUT 
@@ -6982,10 +6997,13 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     if(mpdtlsIsAddrPresent(ssl->mpdtls_host, (struct sockaddr *) &src) >= 0 && 
         mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &dst) >= 0 ) {
         MPDTLS_FLOW *cur_flow;
-        mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
-                                        (struct sockaddr*) &dst, dst_sz, 0, &cur_flow);
-
-        gettimeofday(&cur_flow->last_heartbeat, NULL);
+        if (mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
+                                        (struct sockaddr*) &dst, dst_sz, 0, &cur_flow) != 0) {
+            WOLFSSL_MSG("Cannot create socket");
+            opts |= 0x80;
+        } else {
+            gettimeofday(&cur_flow->last_heartbeat, NULL);
+        }
     } else { //if we refuse the connection
         opts |= 0x80; 
     }
@@ -7023,7 +7041,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
 
     if(cur_flow != NULL) {
-        if(ack->opts & 0x80) {
+        if(!(ack->opts & 0x80)) {
             //the flow must be considered as alive
             WOLFSSL_MSG("New alive flow");
             //move the waiting flow to alive flow
@@ -8736,7 +8754,7 @@ int SendWantConnect(WOLFSSL *ssl, byte options, struct sockaddr_storage *host, s
 
 int SendWantConnectAck(WOLFSSL *ssl, int seq, byte options) {
     WOLFSSL_MSG("Send WantConnectAck");
-    size_t sz = sizeof(MPDtlsWantConnect);
+    size_t sz = sizeof(MPDtlsWantConnectAck);
     MPDtlsWantConnectAck ack;
     ack.ack_sequence = seq;
     ack.opts = options;

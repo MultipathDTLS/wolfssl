@@ -2562,7 +2562,7 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, socklen_t);
     WOLFSSL_LOCAL void FromSockToMPDTLSAddr(MPDtlsAddress*, struct sockaddr*);
     WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, socklen_t*, MPDtlsAddress*);
-    WOLFSSL_LOCAL int FromSockToPrint(struct sockaddr*, int, char*);
+    WOLFSSL_LOCAL int FromSockToPrint(struct sockaddr*, int, char*, int);
 #endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS
