@@ -2827,6 +2827,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
     /**
     * Fill namebuf with a readable IP address and port number
     * namebuf must be initialized with enough space (at least 50 for IPv6 and 22 for IPv4)
+    * return the number of character written (except the ending 0)
     */
     int FromSockToPrint(struct sockaddr* addr, int sz, char *namebuf) {
         int buf_sz = 0, port_sz = 0;
@@ -2839,11 +2840,12 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         if(addr->sa_family == AF_INET) {
             namebuf[buf_sz++] = ':';
         } else {
-            namebuf[buf_sz++] = '/';
+            namebuf[buf_sz++] = '-';
         }
         while(portbuf[port_sz] != '\0') {
             namebuf[buf_sz++] = portbuf[port_sz++];
         }
+        namebuf[buf_sz] = '\0';
         return buf_sz;
     }
 
