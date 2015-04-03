@@ -1273,31 +1273,31 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define FLOW_RETRY 30
 
     typedef struct MPDTLS_SENDER_STATS {
-    	int* 		packets_sent;       //sequence number of packets sent
-    	int  		capacity;           //capacity of the array (mimic arraylist)
-    	int 		nbr_packets_sent;   //number of stored packets inside packets_sent
-        int         waiting_ack;        //first packet which has not been transmitted
+    	uint*		packets_sent;       //sequence number of packets sent
+    	uint  		capacity;           //capacity of the array (mimic arraylist)
+    	uint 		nbr_packets_sent;   //number of stored packets inside packets_sent
+        uint        waiting_ack;        //first packet which has not been transmitted
     	long        forward_delay;      //average forward delay (us)
     	float 		loss_rate;          //loss rate computed
     } MPDTLS_SENDER_STATS;
 
     typedef struct MPDTLS_RECEIVER_STATS {
     	long 	    	nbr_packets_received; //number of stored packets inside packets_sent
-    	int        		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
-    	int 			max_seq;              //maximum sequence number received so far
+    	uint       		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
+    	uint 			max_seq;              //maximum sequence number received so far
         long            nbr_packets_received_cache; //same information as before but transmitted
-        int             min_seq_cache;
-        int             max_seq_cache;
+        uint            min_seq_cache;
+        uint            max_seq_cache;
     	long 			backward_delay;       //average backward delay (us)
         int             threshold;            //after how many packets must we send a feedback ?
-        int             last_feedback;        //sequence number of the last feedback we sent
+        uint            last_feedback;        //sequence number of the last feedback we sent
     } MPDTLS_RECEIVER_STATS;
 
     typedef struct MPDTLS_FLOW {
     	struct sockaddr_storage host;               //a flow is determined by the host
     	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
     	int 					sock;               //reference the connected socket if it exists
-        int                     wantConnectSeq;     //sequence number of the last wantConnect packet sent
+        uint                    wantConnectSeq;     //sequence number of the last wantConnect packet sent
         struct timeval          last_heartbeat;     //last timestamp
     	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
     	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
@@ -2442,13 +2442,13 @@ enum HandShakeType {
 
     typedef struct MPDtlsFeedback {
         long                nbr_packets_received;
-        int                 min_seq;
-        int                 max_seq;
+        byte                min_seq[6];
+        byte                max_seq[6];
         long                forward_delay;           
     } MPDtlsFeedback;
 
     typedef struct MPDtlsFeedbackAck {
-        int                 seq;
+        byte                seq[6];
     } MPDtlsFeedbackAck;
 
     typedef struct MPDtlsWantConnect {
@@ -2458,7 +2458,7 @@ enum HandShakeType {
     } MPDtlsWantConnect;
 
     typedef struct MPDtlsWantConnectAck {
-        int                 ack_sequence;
+        byte                ack_sequence[6];
         byte                opts;
     } MPDtlsWantConnectAck;
 #endif /* WOLFSSL_MPDTLS */
@@ -2554,9 +2554,9 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
 #ifdef WOLFSSL_MPDTLS
     WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
     WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
-    WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, int seq);
+    WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, uint seq);
     WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte, struct sockaddr_storage*, struct sockaddr_storage*, MPDTLS_FLOW*);
-    WOLFSSL_LOCAL int SendWantConnectAck(WOLFSSL*, int, byte);
+    WOLFSSL_LOCAL int SendWantConnectAck(WOLFSSL*, uint, byte);
     WOLFSSL_LOCAL int InsertSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSockbyIndex(MPDTLS_SOCKS*, int);
