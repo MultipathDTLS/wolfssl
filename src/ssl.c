@@ -477,7 +477,8 @@ int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
 #ifdef DEBUG
 void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 {
-    int bufSz, i,j;
+    int bufSz, i;
+    uint j;
     bufSz = ssl->mpdtls_flows->nbrFlows * 4000;
     char buf[bufSz];
     buf[0] = '\0';
