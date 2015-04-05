@@ -2075,12 +2075,12 @@ void mpdtlsRemoveFlow(WOLFSSL *ssl, MPDTLS_FLOWS *flows, const struct sockaddr_s
 */
 void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int index, int *sd) {
     WOLFSSL_ENTER("Remove flow");
-    int i;
     MPDTLS_FLOW flow = flows->flows[index];
     XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
-    for(i=index; i<flows->nbrFlows-1;i++) {
-        XMEMCPY(flows->flows + i, flows->flows + i + 1, sizeof(MPDTLS_FLOW));
+    if(flows->nbrFlows > 1) { //if we delete the only one left, no need to move memory
+        XMEMMOVE(flows->flows + index, flows->flows + index + 1,
+                             sizeof(MPDTLS_FLOW) * (flows->nbrFlows - index));
     }
 
     if(sd == NULL) {
@@ -2094,8 +2094,13 @@ void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int index, int *
 
     //reduce the space needed
     flows->nbrFlows--;
-    flows->flows =  (MPDTLS_FLOW *) XREALLOC(flows->flows, sizeof(MPDTLS_FLOW) * (flows->nbrFlows), //maximum possible size
+    if(flows->nbrFlows > 0) {
+        flows->flows =  (MPDTLS_FLOW *) XREALLOC(flows->flows, sizeof(MPDTLS_FLOW) * (flows->nbrFlows), //maximum possible size
                                 ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    } else {
+        XFREE(flows->flows, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+        flows->flows = NULL;
+    }
 }
 
 /**
@@ -7011,7 +7016,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     //if addresses were effectively announced, we accept the connection
     if(mpdtlsIsAddrPresent(ssl->mpdtls_host, (struct sockaddr *) &src) >= 0 && 
-        mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &dst) >= 0 ) {
+        mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &dst) >= 0) {
         //we check is a flow is already running
         int index1, index2;
         MPDTLS_FLOW *cur_flow;
@@ -7043,7 +7048,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 }
 
 static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
-    int ret,i;
+    int ret,i, index;
     MPDtlsWantConnectAck *ack;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
@@ -7067,6 +7072,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
         if(ssl->mpdtls_flows_waiting->flows[i].wantConnectSeq == seq) {
             cur_flow = ssl->mpdtls_flows_waiting->flows + i;
+            index = i;
         }
     }
 
@@ -7082,7 +7088,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             //we must delete the flow, no connection is possible
             WOLFSSL_MSG("We must delete the flow");
         }
-        mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows_waiting, &cur_flow->host, &cur_flow->remote, NULL);
+        mpdtlsRemoveFlowByIndex(ssl, ssl->mpdtls_flows_waiting, index, NULL);
     }
     //if we don't find such a flow, we do nothing
 

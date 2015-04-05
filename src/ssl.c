@@ -479,7 +479,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 {
     int bufSz, i;
     uint j;
-    bufSz = ssl->mpdtls_flows->nbrFlows * 4000;
+    bufSz = ssl->mpdtls_flows->nbrFlows * 10000;
     char buf[bufSz];
     buf[0] = '\0';
 
