@@ -2445,6 +2445,7 @@ enum HandShakeType {
     } MPDtlsAddress;
 
     #define FEEDBACK_SZ 28
+    #define HEARTBEAT_TIMESTAMP_SZ 16
 
     typedef struct MPDtlsFeedback {
         uint64_t            nbr_packets_received;

@@ -7167,11 +7167,17 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
         case HEARTBEAT_TIMESTAMP: ;
             //we compute the forward delay
             MPDTLS_FLOW *cur_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
-            struct timeval *remote = (struct timeval *) (input + *inOutIdx);
+            struct timeval remote;
+            uint64_t sec, usec;
+            ato64(input + *inOutIdx, &sec);
+            ato64(input + *inOutIdx + 8, &usec);
+
+            remote.tv_sec = (long) sec;
+            remote.tv_usec = (long) usec;
             struct timeval host, res;
             gettimeofday(&host,NULL);
-            timersub(&host,remote,&res);
-            long delay = res.tv_sec*1000000+res.tv_usec;
+            timersub(&host,&remote,&res);
+            uint64_t delay = res.tv_sec*1000000+res.tv_usec;
 
             //exponential mean with jacobson value
 
@@ -8063,9 +8069,19 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
     if (!timerisset(&flow->last_heartbeat)
      || timercmp(&flow->last_heartbeat, &validity_limit, <)) {
         WOLFSSL_MSG("Times out for heartbeat");
+
+        byte output[HEARTBEAT_TIMESTAMP_SZ];
+        if(sizeof(long) == 4){
+            c32toa(now.tv_sec, output+4);
+            c32toa(now.tv_usec, output+12);
+        } else {
+            c64toa(now.tv_sec, output);
+            c64toa(now.tv_usec, output+8);
+        }
+
         ssl->mpdtls_pref_flow = flow;
         gettimeofday(&flow->last_heartbeat, NULL);
-        SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, sizeof(now), (byte*) &now);
+        SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, HEARTBEAT_TIMESTAMP_SZ, output);
     }
 
     gettimeofday(&now, NULL);
