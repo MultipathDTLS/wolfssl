@@ -220,6 +220,29 @@ static INLINE void c32to48(word32 in, byte out[6])
 
 #endif /* WOLFSSL_DTLS */
 
+#ifdef WOLFSSL_MPDTLS
+
+static INLINE void c64toa(uint64_t u64, byte* c)
+{
+    c[0] = (u64 >> 56) & 0xff;
+    c[1] = (u64 >> 48) & 0xff;
+    c[2] = (u64 >> 40) & 0xff;
+    c[3] = (u64 >> 32) & 0xff;
+    c[4] = (u64 >> 24) & 0xff;
+    c[5] = (u64 >> 16) & 0xff;
+    c[6] = (u64 >>  8) & 0xff;
+    c[7] =  u64 & 0xff;
+}
+
+/* convert opaque to 64 bit integer */
+static INLINE void ato64(const byte* c, uint64_t* u64)
+{
+    *u64 = ((uint64_t) c[0] << 56) | ((uint64_t) c[1] << 48) | ((uint64_t) c[2] << 40) | ((uint64_t) c[3] << 32) 
+                    | ((uint64_t) c[4] << 24) | ((uint64_t) c[5] << 16) | ((uint64_t) c[6] << 8) | c[7];
+}
+
+#endif /* WOLFSSL_MPDTLS */
+
 
 /* convert 16 bit integer to opaque */
 static INLINE void c16toa(word16 u16, byte* c)
@@ -6884,29 +6907,33 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     int ret;
     uint i;
-    MPDtlsFeedback *feed;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
     }
     byte* data = ssl->buffers.clearOutputBuffer.buffer;
+    int offset = 0;
     word32 length = ssl->buffers.clearOutputBuffer.length;
 
-    if (length != sizeof(MPDtlsFeedback)) {
+    if (length != FEEDBACK_SZ) {
         WOLFSSL_ERROR(BUFFER_E);
         return BUFFER_E;
     }
-    feed = (MPDtlsFeedback *) data;
 
     int fd = ssl->buffers.dtlsCtx.fd; //socket that has received the last packet
     MPDTLS_FLOW *flow = getFlowFromSocket(ssl->mpdtls_flows,fd);
 
-    uint min_seq, max_seq;
-    ato32(feed->min_seq + 2, &min_seq);
-    ato32(feed->max_seq + 2, &max_seq);
+    uint64_t packets_count;
+    ato64(data + offset, &packets_count);
+    offset += 8;
 
-    //update the forward delay
-    flow->s_stats.forward_delay = feed->forward_delay;
+    uint min_seq, max_seq;
+    ato32(data + offset + 2, &min_seq);
+    offset += 6;
+    ato32(data + offset + 2, &max_seq);
+    offset += 6;
+
+    ato64(data + offset, &flow->s_stats.forward_delay);
 
     if (flow->s_stats.waiting_ack < flow->s_stats.nbr_packets_sent) {
 
@@ -6931,7 +6958,7 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         }
         flow->s_stats.waiting_ack = i;
         //we compute the loss_rate
-        float lr = (flow->s_stats.waiting_ack - feed->nbr_packets_received) / (float) flow->s_stats.waiting_ack;
+        float lr = (flow->s_stats.waiting_ack - packets_count) / (float) flow->s_stats.waiting_ack;
         //take the EWMA between previous and current
         flow->s_stats.loss_rate = flow->s_stats.loss_rate * EWMA_ALPHA + lr * (1 - EWMA_ALPHA);
     }
@@ -8758,8 +8785,9 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 
 int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     WOLFSSL_MSG("SEND FEEDBACK");
-    size_t sz = sizeof(MPDtlsFeedback);
-    MPDtlsFeedback feed;
+    size_t sz = FEEDBACK_SZ;
+    byte output[sz];
+    int offset = 0;
 
     //we merge these data with the cache
     flow->r_stats.min_seq_cache = min(flow->r_stats.min_seq, flow->r_stats.min_seq_cache);
@@ -8767,10 +8795,13 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     flow->r_stats.nbr_packets_received_cache += flow->r_stats.nbr_packets_received;
 
 
-    feed.nbr_packets_received = flow->r_stats.nbr_packets_received_cache;
-    c32to48(flow->r_stats.min_seq_cache, feed.min_seq);
-    c32to48(flow->r_stats.max_seq_cache, feed.max_seq);
-    feed.forward_delay = flow->r_stats.backward_delay;
+    c64toa(flow->r_stats.nbr_packets_received_cache, output);
+    offset += 8;
+    c32to48(flow->r_stats.min_seq_cache, output + offset);
+    offset += 6;
+    c32to48(flow->r_stats.max_seq_cache, output + offset);
+    offset += 6;
+    c64toa(flow->r_stats.backward_delay, output + offset);
 
     //we reset the working set
 
@@ -8785,7 +8816,7 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     flow->r_stats.threshold = FEEDBACK_RTX;
 
     ssl->mpdtls_pref_flow = flow;
-    return SendPacket(ssl, (void*) &feed, sz, feedback);
+    return SendPacket(ssl, (void*) output, sz, feedback);
 }
 
 /**

@@ -1281,7 +1281,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	uint  		capacity;           //capacity of the array (mimic arraylist)
     	uint 		nbr_packets_sent;   //number of stored packets inside packets_sent
         uint        waiting_ack;        //first packet which has not been transmitted
-    	long        forward_delay;      //average forward delay (us)
+    	uint64_t    forward_delay;      //average forward delay (us)
     	float 		loss_rate;          //loss rate computed
     } MPDTLS_SENDER_STATS;
 
@@ -1289,10 +1289,10 @@ typedef struct WOLFSSL_DTLS_CTX {
     	long 	    	nbr_packets_received; //number of stored packets inside packets_sent
     	uint       		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
     	uint 			max_seq;              //maximum sequence number received so far
-        long            nbr_packets_received_cache; //same information as before but transmitted
+        uint64_t        nbr_packets_received_cache; //same information as before but transmitted
         uint            min_seq_cache;
         uint            max_seq_cache;
-    	long 			backward_delay;       //average backward delay (us)
+    	uint64_t		backward_delay;       //average backward delay (us)
         int             threshold;            //after how many packets must we send a feedback ?
         uint            last_feedback;        //sequence number of the last feedback we sent
     } MPDTLS_RECEIVER_STATS;
@@ -2444,11 +2444,13 @@ enum HandShakeType {
         u_int16_t              portNumber;
     } MPDtlsAddress;
 
+    #define FEEDBACK_SZ 28
+
     typedef struct MPDtlsFeedback {
-        long                nbr_packets_received;
+        uint64_t            nbr_packets_received;
         byte                min_seq[6];
         byte                max_seq[6];
-        long                forward_delay;           
+        uint64_t            forward_delay;           
     } MPDtlsFeedback;
 
     typedef struct MPDtlsFeedbackAck {
