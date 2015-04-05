@@ -1272,6 +1272,10 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define CIM_RTX 10
     #define FLOW_RETRY 30
 
+    //options for wantConnect
+    #define MPDTLS_REFUSE_CONNECTION 0x80
+    #define MPDTLS_BACKUP_CONNECTION 0x40
+
     typedef struct MPDTLS_SENDER_STATS {
     	int* 		packets_sent;       //sequence number of packets sent
     	int  		capacity;           //capacity of the array (mimic arraylist)

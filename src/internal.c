@@ -7015,7 +7015,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             if (mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows_waiting, (struct sockaddr*) &src, src_sz, 
                                             (struct sockaddr*) &dst, dst_sz, 0, &cur_flow) != 0) {
                 WOLFSSL_MSG("Cannot create socket");
-                opts |= 0x80;
+                opts |= MPDTLS_REFUSE_CONNECTION;
             } else {
                 gettimeofday(&cur_flow->last_heartbeat, NULL);
             }
@@ -7025,7 +7025,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             gettimeofday(&cur_flow->last_heartbeat, NULL);
         }
     } else { //if we refuse the connection
-        opts |= 0x80; 
+        opts |= MPDTLS_REFUSE_CONNECTION; 
     }
     //send ack back
     SendWantConnectAck(ssl, ssl->keys.dtls_state.curSeq, opts);
@@ -7061,7 +7061,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
 
     if(cur_flow != NULL) {
-        if(!(ack->opts & 0x80)) {
+        if(!(ack->opts & MPDTLS_REFUSE_CONNECTION)) {
             //the flow must be considered as alive
             WOLFSSL_MSG("New alive flow");
             //move the waiting flow to alive flow
@@ -8049,6 +8049,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
                 SendWantConnect(ssl, 0x0, NULL, NULL, cur_flow);
             } else { // acceptor side, the flow is not used we delete it
                 mpdtlsRemoveFlowByIndex(ssl, ssl->mpdtls_flows_waiting,i,NULL);
+                i--; //we must decrement the index to re-synchronize with the list
             }
         }
     }
