@@ -2062,25 +2062,25 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
 * 
 */
 void mpdtlsRemoveFlow(WOLFSSL *ssl, MPDTLS_FLOWS *flows, const struct sockaddr_storage* hostaddr, const struct sockaddr_storage* remoteaddr, int *sd) {
-    int index = mpdtlsIsFlowPresent(flows, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
+    int idx_flow = mpdtlsIsFlowPresent(flows, (struct sockaddr*) hostaddr, (struct sockaddr*) remoteaddr);
 
-    if(index < 0) //no flow was present
+    if(idx_flow < 0) //no flow was present
         return;
-    mpdtlsRemoveFlowByIndex(ssl, flows, index, sd);
+    mpdtlsRemoveFlowByIndex(ssl, flows, idx_flow, sd);
 
 }
 
 /**
 * Remove the flow in a given index
 */
-void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int index, int *sd) {
+void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int idx_flow, int *sd) {
     WOLFSSL_ENTER("Remove flow");
-    MPDTLS_FLOW flow = flows->flows[index];
+    MPDTLS_FLOW flow = flows->flows[idx_flow];
     XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
     if(flows->nbrFlows > 1) { //if we delete the only one left, no need to move memory
-        XMEMMOVE(flows->flows + index, flows->flows + index + 1,
-                             sizeof(MPDTLS_FLOW) * (flows->nbrFlows - index));
+        XMEMMOVE(flows->flows + idx_flow, flows->flows + idx_flow + 1,
+                             sizeof(MPDTLS_FLOW) * (flows->nbrFlows - idx_flow));
     }
 
     if(sd == NULL) {
@@ -2656,34 +2656,34 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
     }
 
     int DeleteSock(MPDTLS_SOCKS* socks, int sock) {
-        int index, found = 0;
+        int idx_sock, found = 0;
 
-        for (index = 0; index < socks->nbrSocks; index++) {
-            if (socks->socks[index] == sock) {
+        for (idx_sock = 0; idx_sock < socks->nbrSocks; idx_sock++) {
+            if (socks->socks[idx_sock] == sock) {
                 found = 1;
                 break;
             }
         }
 
         if (found == 1) {
-            return DeleteSockbyIndex(socks, index);
+            return DeleteSockbyIndex(socks, idx_sock);
         }
 
         return NOT_FOUND_E;
     }
 
-    int DeleteSockbyIndex(MPDTLS_SOCKS* socks, int index) {
-        if (socks->nbrSocks > index && index >= 0) {
+    int DeleteSockbyIndex(MPDTLS_SOCKS* socks, int idx_sock) {
+        if (socks->nbrSocks > idx_sock && idx_sock >= 0) {
             socks->nbrSocks--;
 
-            if (index != socks->nbrSocks) {
+            if (idx_sock != socks->nbrSocks) {
                 /*
                  * If the index is the last index of the array, we don't need to move anything.
                  * Else, move all the addresses after the removed index one cell backward.
                  */
-                XMEMMOVE(socks->socks + index,
-                         socks->socks + index + 1,
-                         sizeof(int) * (socks->nbrSocks - index));
+                XMEMMOVE(socks->socks + idx_sock,
+                         socks->socks + idx_sock + 1,
+                         sizeof(int) * (socks->nbrSocks - idx_sock));
             }
 
             socks->socks = (int*) XREALLOC(socks->socks,
@@ -2711,34 +2711,34 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
     }
     
     int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
-        int index, found = 0;
+        int idx_addr, found = 0;
 
-        for (index = 0; index < addrs->nbrAddrs; index++) {
-            if (memcmp(addr, &(addrs->addrs[index]), addrSz) == 0) {
+        for (idx_addr = 0; idx_addr < addrs->nbrAddrs; idx_addr++) {
+            if (memcmp(addr, &(addrs->addrs[idx_addr]), addrSz) == 0) {
                 found = 1;
                 break;
             }
         }
 
         if (found == 1) {
-            return DeleteAddrbyIndex(addrs, index);
+            return DeleteAddrbyIndex(addrs, idx_addr);
         }
 
         return NOT_FOUND_E;
     }
 
-    int DeleteAddrbyIndex(MPDTLS_ADDRS* addrs, int index) {
-        if (addrs->nbrAddrs > index && index >= 0) {
+    int DeleteAddrbyIndex(MPDTLS_ADDRS* addrs, int idx_addr) {
+        if (addrs->nbrAddrs > idx_addr && idx_addr >= 0) {
             addrs->nbrAddrs--;
 
-            if (index != addrs->nbrAddrs) {
+            if (idx_addr != addrs->nbrAddrs) {
                 /*
                  * If the index is the last index of the array, we don't need to move anything.
                  * Else, move all the addresses after the removed index one cell backward.
                  */
-                XMEMMOVE(addrs->addrs + index,
-                         addrs->addrs + index + 1,
-                         sizeof(struct sockaddr_storage) * (addrs->nbrAddrs - index));
+                XMEMMOVE(addrs->addrs + idx_addr,
+                         addrs->addrs + idx_addr + 1,
+                         sizeof(struct sockaddr_storage) * (addrs->nbrAddrs - idx_addr));
             }
 
             addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
@@ -7048,7 +7048,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 }
 
 static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
-    int ret,i, index;
+    int ret,i, idx;
     MPDtlsWantConnectAck *ack;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
@@ -7072,7 +7072,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
         if(ssl->mpdtls_flows_waiting->flows[i].wantConnectSeq == seq) {
             cur_flow = ssl->mpdtls_flows_waiting->flows + i;
-            index = i;
+            idx = i;
         }
     }
 
@@ -7088,7 +7088,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             //we must delete the flow, no connection is possible
             WOLFSSL_MSG("We must delete the flow");
         }
-        mpdtlsRemoveFlowByIndex(ssl, ssl->mpdtls_flows_waiting, index, NULL);
+        mpdtlsRemoveFlowByIndex(ssl, ssl->mpdtls_flows_waiting, idx, NULL);
     }
     //if we don't find such a flow, we do nothing
 
