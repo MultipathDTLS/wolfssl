@@ -1286,7 +1286,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     } MPDTLS_SENDER_STATS;
 
     typedef struct MPDTLS_RECEIVER_STATS {
-    	long 	    	nbr_packets_received; //number of stored packets inside packets_sent
+    	uint64_t    	nbr_packets_received; //number of stored packets inside packets_sent
     	uint       		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
     	uint 			max_seq;              //maximum sequence number received so far
         uint64_t        nbr_packets_received_cache; //same information as before but transmitted
