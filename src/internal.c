@@ -8071,6 +8071,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
         WOLFSSL_MSG("Times out for heartbeat");
 
         byte output[HEARTBEAT_TIMESTAMP_SZ];
+        XMEMSET(output, 0, HEARTBEAT_TIMESTAMP_SZ);
         if(sizeof(long) == 4){
             c32toa(now.tv_sec, output+4);
             c32toa(now.tv_usec, output+12);
