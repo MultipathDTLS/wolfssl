@@ -2052,8 +2052,16 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
     //and port
     cur_flow->sock = sd;
 
-    timerclear(&cur_flow->last_heartbeat);
     cur_flow->wantConnectSeq = 0;
+
+    //heartbeat
+
+    timerclear(&cur_flow->hb.last_heartbeat);
+    cur_flow->hb.response_rcvd = 0;
+    cur_flow->hb.rtx_threshold = HEARTBEAT_TX;
+    cur_flow->hb.heartbeatPayload = NULL;
+    cur_flow->hb.heartbeatPayloadLength = 0;
+    cur_flow->hb.heartbeatState = NULL_STATE;
 
     //initialize stats
     cur_flow->r_stats.min_seq = INT_MAX;
@@ -2100,6 +2108,7 @@ void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int idx_flow, in
     WOLFSSL_ENTER("Remove flow");
     MPDTLS_FLOW flow = flows->flows[idx_flow];
     XFREE(flow.s_stats.packets_sent, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    XFREE(flow.hb.heartbeatPayload, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
     if(flows->nbrFlows > 1) { //if we delete the only one left, no need to move memory
         XMEMMOVE(flows->flows + idx_flow, flows->flows + idx_flow + 1,

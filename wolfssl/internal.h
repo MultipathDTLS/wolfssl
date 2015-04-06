@@ -1297,12 +1297,21 @@ typedef struct WOLFSSL_DTLS_CTX {
         uint            last_feedback;        //sequence number of the last feedback we sent
     } MPDTLS_RECEIVER_STATS;
 
+    typedef struct MPDTLS_FLOW_HEARTBEAT {
+        struct timeval          last_heartbeat;         //last timestamp
+        byte                    response_rcvd;          //whether or not we have received a response to our heartbeat
+        uint                    rtx_threshold;          //the retransmission threshold, will be higher is no response
+        byte*                   heartbeatPayload;       //heartbeat payload
+        word16                  heartbeatPayloadLength; //length
+        MessageState            heartbeatState;         //state to avoid multiple heartbeat rtx
+    } MPDTLS_FLOW_HEARTBEAT;
+
     typedef struct MPDTLS_FLOW {
     	struct sockaddr_storage host;               //a flow is determined by the host
     	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
     	int 					sock;               //reference the connected socket if it exists
         uint                    wantConnectSeq;     //sequence number of the last wantConnect packet sent
-        struct timeval          last_heartbeat;     //last timestamp
+        MPDTLS_FLOW_HEARTBEAT   hb;                 //hb manager
     	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
     	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
     } MPDTLS_FLOW;
