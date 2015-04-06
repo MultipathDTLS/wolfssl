@@ -264,16 +264,7 @@ int EmbedReceive(WOLFSSL *ssl, char *buf, int sz, void *ctx)
     if (recvd < 0) {
         err = LastError();
         WOLFSSL_MSG("Embed Receive error");
-#ifdef WOLFSSL_MPDTLS
-            if(ssl->options.mpdtls) {
-                //error on socket, we delete the flow
-                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
-                if(fail_flow!=NULL) {
-                    WOLFSSL_MSG("we delete the flow");
-                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
-                }
-            }
-#endif        
+     
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             if (!wolfSSL_dtls(ssl) || wolfSSL_get_using_nonblock(ssl)) {
                 WOLFSSL_MSG("    Would block");
@@ -327,18 +318,7 @@ int EmbedSend(WOLFSSL* ssl, char *buf, int sz, void *ctx)
 
     if (sent < 0) {
         err = LastError();
-        WOLFSSL_MSG("Embed Send error");
-
-#ifdef WOLFSSL_MPDTLS
-            if(ssl->options.mpdtls) {
-                //error on socket, we delete the flow
-                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
-                if(fail_flow!=NULL) {
-                    WOLFSSL_MSG("we delete the flow");
-                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
-                }
-            }
-#endif   
+        WOLFSSL_MSG("Embed Send error"); 
 
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             WOLFSSL_MSG("    Would Block");
@@ -418,6 +398,17 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
         err = LastError();
         WOLFSSL_MSG("Embed Receive From error");
 
+#ifdef WOLFSSL_MPDTLS
+            if(ssl->options.mpdtls) {
+                //error on socket, we delete the flow
+                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
+                if(fail_flow!=NULL) {
+                    WOLFSSL_MSG("we delete the flow");
+                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
+                }
+            }
+#endif   
+
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             if (wolfSSL_get_using_nonblock(ssl)) {
                 WOLFSSL_MSG("    Would block");
@@ -477,6 +468,17 @@ int EmbedSendTo(WOLFSSL* ssl, char *buf, int sz, void *ctx)
     if (sent < 0) {
         err = LastError();
         WOLFSSL_MSG("Embed Send To error");
+
+#ifdef WOLFSSL_MPDTLS
+            if(ssl->options.mpdtls) {
+                //error on socket, we delete the flow
+                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
+                if(fail_flow!=NULL) {
+                    WOLFSSL_MSG("we delete the flow");
+                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
+                }
+            }
+#endif  
 
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             WOLFSSL_MSG("    Would Block");
