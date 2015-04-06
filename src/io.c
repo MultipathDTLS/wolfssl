@@ -477,6 +477,7 @@ int EmbedSendTo(WOLFSSL* ssl, char *buf, int sz, void *ctx)
                     WOLFSSL_MSG("we delete the flow");
                     mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
                 }
+                ssl->mpdtls_pref_flow = NULL;
             }
 #endif  
 
@@ -545,7 +546,7 @@ int EmbedSchedulerRoundRobin(WOLFSSL* ssl, void* _flows)
     MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *)_flows;
     
     flows->nextRound++;
-    if(flows->nextRound == flows->nbrFlows)
+    if(flows->nextRound >= flows->nbrFlows)
         flows->nextRound = 0;
 
     return flows->flows[flows->nextRound].sock;
