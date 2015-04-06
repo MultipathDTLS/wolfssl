@@ -344,6 +344,7 @@ int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
         for (; res; res = res->ai_next) {
             InsertAddr(ctx->mpdtls_host, (struct sockaddr *) res->ai_addr, res->ai_addrlen);
         }
+        freeaddrinfo(res);
     }
 
     return SSL_SUCCESS;
@@ -377,6 +378,7 @@ int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
                 n++; // Count the number of addresses we add
             }
         }
+        freeaddrinfo(res);
     }
 
     if (n > 0) {
@@ -508,7 +510,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq_cache);
 
         sprintf(buf,"%s----- Sender Stats ----- \n",buf);
-        char seqbuf[flows[i].s_stats.nbr_packets_sent * 3 + 2];
+        char seqbuf[flows[i].s_stats.nbr_packets_sent * 10];
         sprintf(seqbuf,"[");
         for(j = 0; j < flows[i].s_stats.nbr_packets_sent; j++) {
             if(j==flows[i].s_stats.waiting_ack) {
