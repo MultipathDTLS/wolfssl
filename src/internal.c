@@ -8121,12 +8121,12 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
     struct timeval now, offset, validity_limit;
     gettimeofday(&now, NULL);
     timerclear(&offset);
-    offset.tv_sec = HEARTBEAT_TX;
+    offset.tv_sec = flow->hb.rtx_threshold;
 
     timersub(&now, &offset, &validity_limit);
 
-    if (!timerisset(&flow->last_heartbeat)
-     || timercmp(&flow->last_heartbeat, &validity_limit, <)) {
+    if (!timerisset(&flow->hb.last_heartbeat)
+     || timercmp(&flow->hb.last_heartbeat, &validity_limit, <)) {
         WOLFSSL_MSG("Times out for heartbeat");
 
         byte output[HEARTBEAT_TIMESTAMP_SZ];
@@ -8139,8 +8139,18 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
             c64toa(now.tv_usec, output+8);
         }
 
+        if(timerisset(&flow->hb.last_heartbeat) && !flow->hb.response_rcvd) { //no response has been received
+            if(flow->hb.rtx_threshold > HEARTBEAT_MAX_THR) { //this flow is no answering anymore
+                WOLFSSL_MSG("We have a DEAD flow here !");
+                mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &flow->host, &flow->remote, NULL);
+                return; //we stop everything with this flow
+            }
+
+            flow->hb.rtx_threshold *= 2; //we double the threshold for the next time
+            WOLFSSL_MSG("Delaying next Heartbeat");
+        }
         ssl->mpdtls_pref_flow = flow;
-        gettimeofday(&flow->last_heartbeat, NULL);
+        gettimeofday(&flow->hb.last_heartbeat, NULL);
         SendHeartbeatMessage(ssl, HEARTBEAT_TIMESTAMP, HEARTBEAT_TIMESTAMP_SZ, output);
     }
 
