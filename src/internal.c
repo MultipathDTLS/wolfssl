@@ -3379,6 +3379,9 @@ int SendBuffered(WOLFSSL* ssl)
 #ifdef WOLFSSL_MPDTLS
         if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE && ssl->keys.dtls_sequence_number > 1) {
             /*we use only connected sockets */
+            if(ssl->buffers.dtlsCtx.peer.sa!=NULL) {
+                XFREE(ssl->buffers.dtlsCtx.peer.sa,ssl->heap,DYNAMIC_TYPE_SOCKADDR);
+            }
             ssl->buffers.dtlsCtx.peer.sa = NULL;
             ssl->buffers.dtlsCtx.peer.sz = 0;
 
