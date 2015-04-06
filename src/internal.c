@@ -7065,12 +7065,12 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
                 WOLFSSL_MSG("Cannot create socket");
                 opts |= MPDTLS_REFUSE_CONNECTION;
             } else {
-                gettimeofday(&cur_flow->last_heartbeat, NULL);
+                gettimeofday(&cur_flow->hb.last_heartbeat, NULL);
             }
         } else if(index2 > -1) {
             //we reset the timer for the flow running if it is waiting
             cur_flow = &ssl->mpdtls_flows_waiting->flows[index2];
-            gettimeofday(&cur_flow->last_heartbeat, NULL);
+            gettimeofday(&cur_flow->hb.last_heartbeat, NULL);
         }
     } else { //if we refuse the connection
         opts |= MPDTLS_REFUSE_CONNECTION; 
@@ -7161,15 +7161,34 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
     switch (message->type) {
 
         case HEARTBEAT_RESPONSE:
-            if (payload_length == ssl->heartbeatPayloadLength
-             && XMEMCMP(ssl->heartbeatPayload, input + *inOutIdx, ssl->heartbeatPayloadLength) == 0) {
-                XFREE(ssl->heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
-                ssl->heartbeatPayload = NULL;
-                ssl->heartbeatPayloadLength = 0;
-                ssl->heartbeatState = NULL_STATE;
-            } else {
-                WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
+#ifdef WOLFSSL_MPDTLS
+            if(ssl->options.mpdtls) {
+                MPDTLS_FLOW *cur_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
+                if (payload_length == cur_flow->hb.heartbeatPayloadLength
+                 && XMEMCMP(cur_flow->hb.heartbeatPayload, input + *inOutIdx, payload_length) == 0) {
+                    XFREE(cur_flow->hb.heartbeatPayload, NULL, DYNAMIC_TYPE_MPDTLS);
+                    cur_flow->hb.heartbeatPayload = NULL;
+                    cur_flow->hb.heartbeatPayloadLength = 0;
+                    cur_flow->hb.heartbeatState = NULL_STATE;
+                    cur_flow->hb.response_rcvd = 1;
+                    cur_flow->hb.rtx_threshold = HEARTBEAT_TX; //get back to the initial value
+                } else {
+                    WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
+                }
+             } else {
+#endif
+                if (payload_length == ssl->heartbeatPayloadLength
+                 && XMEMCMP(ssl->heartbeatPayload, input + *inOutIdx, ssl->heartbeatPayloadLength) == 0) {
+                    XFREE(ssl->heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
+                    ssl->heartbeatPayload = NULL;
+                    ssl->heartbeatPayloadLength = 0;
+                    ssl->heartbeatState = NULL_STATE;
+                } else {
+                    WOLFSSL_MSG("Payload mismatch, Ignoring heartbeat received");
+                }
+#ifdef WOLFSSL_MPDTLS
             }
+#endif
             break;
 
 #ifdef WOLFSSL_MPDTLS
@@ -7875,16 +7894,29 @@ int ProcessReply(WOLFSSL* ssl)
 }
 
 #ifdef HAVE_HEARTBEAT
-
+/**
+* If you use this function with MPDTLS, you MUST set ssl->mpdtls_pref_flow BEFORE calling
+*/
 int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload_length, const byte* payload)
 {
     byte              *output;
     word32             length, idx = RECORD_HEADER_SZ;
     int                ret;
+    byte               **heartbeatPayload;
+    word16             *heartbeatPayloadLength;
+    MessageState state = ssl->heartbeatState;
+#ifdef WOLFSSL_MPDTLS
+    MPDTLS_FLOW *cur_flow = ssl->mpdtls_pref_flow;
+    if (ssl->options.mpdtls) {
+        state = cur_flow->hb.heartbeatState;
+    }
+#endif
 
-    if (type != HEARTBEAT_RESPONSE && ssl->heartbeatState == IN_FLIGHT) {
+    if (type != HEARTBEAT_RESPONSE && state == IN_FLIGHT) {
         return HEARTBEAT_ALREADY_FLYING;
     }
+
+
 
 #ifdef WOLFSSL_DTLS
     if (ssl->options.dtls)
@@ -7927,10 +7959,22 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     idx += HB_MSG_HEADER_SZ;
 
+    heartbeatPayload = &ssl->heartbeatPayload;
+    heartbeatPayloadLength = &ssl->heartbeatPayloadLength;
+
+    #ifdef WOLFSSL_MPDTLS
+        if(ssl->options.mpdtls) {
+            heartbeatPayload = &cur_flow->hb.heartbeatPayload;
+            heartbeatPayloadLength = &cur_flow->hb.heartbeatPayloadLength;
+        }
+    #endif
+
     if(type != HEARTBEAT_RESPONSE) {
-        ssl->heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
-        XMEMCPY(ssl->heartbeatPayload, payload, payload_length);
-        ssl->heartbeatPayloadLength = payload_length;
+        //if we never received the response, we must free
+        XFREE(*heartbeatPayload, NULL, DYNAMIC_TYPE_MPDTLS);
+        *heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
+        XMEMCPY(*heartbeatPayload, payload, payload_length);
+        *heartbeatPayloadLength = payload_length;
     }
     XMEMCPY(output + idx, payload, payload_length);
 
@@ -7941,8 +7985,14 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     if (ret != 0)
         return ret;
 
-    if (type != HEARTBEAT_RESPONSE)
+    if (type != HEARTBEAT_RESPONSE) {
+#ifdef WOLFSSL_MPDTLS
+        if(ssl->options.mpdtls)
+            cur_flow->hb.heartbeatState = IN_FLIGHT;
+        else
+#endif
         ssl->heartbeatState = IN_FLIGHT;
+    }
     
     ssl->buffers.outputBuffer.length += length;
 
@@ -8111,7 +8161,7 @@ void checkTimeouts(WOLFSSL *ssl, int fd) {
     int i;
     for(i = 0; i < ssl->mpdtls_flows_waiting->nbrFlows; i++) {
         MPDTLS_FLOW *cur_flow = ssl->mpdtls_flows_waiting->flows + i;
-        if(timercmp(&cur_flow->last_heartbeat, &validity_limit, <)) {
+        if(timercmp(&cur_flow->hb.last_heartbeat, &validity_limit, <)) {
             WOLFSSL_MSG("FLOW waiting for too long");
             if(cur_flow->wantConnectSeq != 0) { //initiator side
                 //we retransmit
@@ -8868,7 +8918,7 @@ int SendWantConnect(WOLFSSL *ssl, byte options, struct sockaddr_storage *host, s
     //we remember the seq number
     cur_flow->wantConnectSeq = ssl->keys.dtls_sequence_number;
     
-    gettimeofday(&cur_flow->last_heartbeat, NULL);
+    gettimeofday(&cur_flow->hb.last_heartbeat, NULL);
 
 
 
