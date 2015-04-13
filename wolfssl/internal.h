@@ -934,6 +934,7 @@ struct WOLFSSL_BIO {
     byte        eof;           /* eof flag */
     WOLFSSL*     ssl;           /* possible associated ssl */
     byte*       mem;           /* memory buffer */
+    void*       ptr;           /* custom ptr */
     int         memLen;        /* memory buffer length */
     int         fd;            /* possible file descriptor */
     WOLFSSL_BIO* prev;          /* previous in chain */

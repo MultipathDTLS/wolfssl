@@ -408,7 +408,7 @@ WOLFSSL_API int  wolfSSL_BIO_pending(WOLFSSL_BIO*);
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_buffer(void);
 WOLFSSL_API long wolfSSL_BIO_set_write_buffer_size(WOLFSSL_BIO*, long size);
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_ssl(void);
-WOLFSSL_API WOLFSSL_BIO*        wolfSSL_BIO_new_socket(int sfd, int flag);
+WOLFSSL_API WOLFSSL_BIO*        wolfSSL_BIO_new_socket(int sfd, int flag, void*);
 WOLFSSL_API int         wolfSSL_BIO_eof(WOLFSSL_BIO*);
 
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_s_mem(void);
@@ -416,6 +416,7 @@ WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_base64(void);
 WOLFSSL_API void wolfSSL_BIO_set_flags(WOLFSSL_BIO*, int);
 
 WOLFSSL_API int wolfSSL_BIO_get_mem_data(WOLFSSL_BIO* bio,const unsigned char** p);
+WOLFSSL_API void* wolfSSL_BIO_get_rbio_ptr(WOLFSSL* ssl);
 WOLFSSL_API WOLFSSL_BIO* wolfSSL_BIO_new_mem_buf(void* buf, int len);
 
 

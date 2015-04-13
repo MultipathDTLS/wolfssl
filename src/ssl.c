@@ -7092,7 +7092,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
     }
 
 
-    WOLFSSL_BIO* wolfSSL_BIO_new_socket(int sfd, int closeF)
+    WOLFSSL_BIO* wolfSSL_BIO_new_socket(int sfd, int closeF, void *ptr)
     {
         WOLFSSL_BIO* bio = (WOLFSSL_BIO*) XMALLOC(sizeof(WOLFSSL_BIO), 0,
                                                 DYNAMIC_TYPE_OPENSSL);
@@ -7107,6 +7107,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
             bio->prev  = 0;
             bio->next  = 0;
             bio->mem   = NULL;
+            bio->ptr   = ptr;
             bio->memLen = 0;
         }
         return bio;
@@ -7145,6 +7146,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
             bio->eof    = 0;
             bio->ssl    = NULL;
             bio->mem    = NULL;
+            bio->ptr    = NULL;
             bio->memLen = 0;
             bio->fd     = 0;
             bio->prev   = NULL;
@@ -7162,6 +7164,11 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
         *p = bio->mem;
 
         return bio->memLen;
+    }
+
+    void* wolfSSL_BIO_get_rbio_ptr(WOLFSSL* ssl)
+    {
+        return ssl->biord->ptr;
     }
 
 
