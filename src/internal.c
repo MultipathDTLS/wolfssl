@@ -7934,7 +7934,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
         length = OUTPUT_RECORD_SIZE;
 #endif
 
-#if WOLFSSL_DTLS
+#ifdef WOLFSSL_DTLS
         if (ssl->options.dtls)
             length = min(length, 1472);//MAX_UDP_SIZE);
 #endif
