@@ -399,7 +399,7 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
         WOLFSSL_MSG("Embed Receive From error");
 
 #ifdef WOLFSSL_MPDTLS
-            if(ssl->options.mpdtls) {
+            if(ssl->options.mpdtls && (err != SOCKET_EWOULDBLOCK && err != SOCKET_EAGAIN && !wolfSSL_get_using_nonblock(ssl))) {
                 //error on socket, we delete the flow
                 MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
                 if(fail_flow!=NULL) {
@@ -470,7 +470,7 @@ int EmbedSendTo(WOLFSSL* ssl, char *buf, int sz, void *ctx)
         WOLFSSL_MSG("Embed Send To error");
 
 #ifdef WOLFSSL_MPDTLS
-            if(ssl->options.mpdtls) {
+            if(ssl->options.mpdtls && err != SOCKET_EWOULDBLOCK && err != SOCKET_EAGAIN) {
                 //error on socket, we delete the flow
                 MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
                 if(fail_flow!=NULL) {
