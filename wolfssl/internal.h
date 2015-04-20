@@ -2214,6 +2214,7 @@ struct WOLFSSL {
     CipherSpecs     specs;
     Keys            keys;
     Options         options;
+    wolfSSL_Mutex   send_mutex;
 #ifdef OPENSSL_EXTRA
     WOLFSSL_BIO*     biord;              /* socket bio read  to free/close */
     WOLFSSL_BIO*     biowr;              /* socket bio write to free/close */

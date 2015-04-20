@@ -1493,6 +1493,9 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 
     ssl->ctx     = ctx; /* only for passing to calls, options could change */
     ssl->version = ctx->method->version;
+    if(InitMutex(&ssl->send_mutex)!=0) {
+        return BAD_MUTEX_E;
+    }
 
 #ifndef NO_RSA
     haveRSA = 1;
@@ -3370,9 +3373,16 @@ void ShrinkInputBuffer(WOLFSSL* ssl, int forcedFree)
 
 int SendBuffered(WOLFSSL* ssl)
 {
+
     if (ssl->ctx->CBIOSend == NULL) {
         WOLFSSL_MSG("Your IO Send callback is null, please set");
         return SOCKET_ERROR_E;
+    }
+
+    //lock
+    if (LockMutex(&ssl->send_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
     }
 
     while (ssl->buffers.outputBuffer.length > 0) {
@@ -3407,6 +3417,7 @@ int SendBuffered(WOLFSSL* ssl)
             switch (sent) {
 
                 case WOLFSSL_CBIO_ERR_WANT_WRITE:        /* would block */
+                    UnLockMutex(&ssl->send_mutex);
                     return WANT_WRITE;
 
                 case WOLFSSL_CBIO_ERR_CONN_RST:          /* connection reset */
@@ -3424,6 +3435,7 @@ int SendBuffered(WOLFSSL* ssl)
                                 XSTRNCPY(ssl->timeoutInfo.timeoutName,
                                         "send() timeout", MAX_TIMEOUT_NAME_SZ);
                                 WOLFSSL_MSG("Got our timeout");
+                                UnLockMutex(&ssl->send_mutex);
                                 return WANT_WRITE;
                             }
                         }
@@ -3435,21 +3447,22 @@ int SendBuffered(WOLFSSL* ssl)
                     break;
 
                 default:
-                    return SOCKET_ERROR_E;
+                    break;
             }
-
+            UnLockMutex(&ssl->send_mutex);
             return SOCKET_ERROR_E;
         }
 
         if (sent > (int)ssl->buffers.outputBuffer.length) {
             WOLFSSL_MSG("SendBuffered() out of bounds read");
+            UnLockMutex(&ssl->send_mutex);
             return SEND_OOB_READ_E;
         }
 
         ssl->buffers.outputBuffer.idx += sent;
         ssl->buffers.outputBuffer.length -= sent;
     }
-
+    UnLockMutex(&ssl->send_mutex);
     ssl->buffers.outputBuffer.idx = 0;
 
     if (ssl->buffers.outputBuffer.dynamicFlag)
@@ -7974,7 +7987,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
     if(type != HEARTBEAT_RESPONSE) {
         //if we never received the response, we must free
-        XFREE(*heartbeatPayload, NULL, DYNAMIC_TYPE_MPDTLS);
+        XFREE(*heartbeatPayload, NULL, DYNAMIC_TYPE_SSL);
         *heartbeatPayload = (byte *) XMALLOC(payload_length, NULL, DYNAMIC_TYPE_SSL);
         XMEMCPY(*heartbeatPayload, payload, payload_length);
         *heartbeatPayloadLength = payload_length;
