@@ -8010,9 +8010,10 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     idx += payload_length;
 
     /* then random */
-    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, length - idx);
-    if (ret != 0)
-        return ret;
+    // ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, length - idx);
+    // if (ret != 0)
+    //     return ret;
+    XMEMSET(output + idx, 0x5c, length - idx);
 
     if (type != HEARTBEAT_RESPONSE) {
 #ifdef WOLFSSL_MPDTLS
