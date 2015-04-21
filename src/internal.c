@@ -3275,8 +3275,14 @@ retry:
         }
     }
 #endif
-
+        //lock
+    if (LockMutex(&ssl->send_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
+    }
     recvd = ssl->ctx->CBIORecv(ssl, (char *)buf, (int)sz, ssl->IOCB_ReadCtx);
+
+    UnLockMutex(&ssl->send_mutex);
     if (recvd < 0)
         switch (recvd) {
             case WOLFSSL_CBIO_ERR_GENERAL:        /* general/unknown error */
@@ -3462,11 +3468,12 @@ int SendBuffered(WOLFSSL* ssl)
         ssl->buffers.outputBuffer.idx += sent;
         ssl->buffers.outputBuffer.length -= sent;
     }
-    UnLockMutex(&ssl->send_mutex);
     ssl->buffers.outputBuffer.idx = 0;
 
     if (ssl->buffers.outputBuffer.dynamicFlag)
         ShrinkOutputBuffer(ssl);
+
+    UnLockMutex(&ssl->send_mutex);
 
 #ifdef WOLFSSL_MPDTLS
     if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE) {
