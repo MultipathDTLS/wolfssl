@@ -1493,7 +1493,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 
     ssl->ctx     = ctx; /* only for passing to calls, options could change */
     ssl->version = ctx->method->version;
-    if(InitMutex(&ssl->send_mutex)!=0) {
+    if(InitMutex(&ssl->access_mutex)!=0) {
         return BAD_MUTEX_E;
     }
 
@@ -2174,6 +2174,7 @@ void SSL_ResourceFree(WOLFSSL* ssl)
     XFREE(ssl->suites, ssl->heap, DYNAMIC_TYPE_SUITES);
     XFREE(ssl->hsHashes, ssl->heap, DYNAMIC_TYPE_HASHES);
     XFREE(ssl->buffers.domainName.buffer, ssl->heap, DYNAMIC_TYPE_DOMAIN);
+    FreeMutex(&ssl->access_mutex);
 
 #ifdef WOLFSSL_MPDTLS
     MpdtlsAddrsFree(&(ssl->mpdtls_remote));
@@ -3243,7 +3244,13 @@ retry:
             }
         }
         WOLFSSL_ENTER("Select");
+        UnLockMutex(&ssl->access_mutex);
         result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
+        //lock
+        if (LockMutex(&ssl->access_mutex) != 0) {
+            WOLFSSL_MSG("Bad Lock Mutex count");
+            return BAD_MUTEX_E;
+        }
         WOLFSSL_LEAVE("Select", result);
         if (result!=0) {
             for (i=0; i < max(ssl->mpdtls_flows->nbrFlows, ssl->mpdtls_flows_waiting->nbrFlows); i++) {
@@ -3275,14 +3282,7 @@ retry:
         }
     }
 #endif
-        //lock
-    if (LockMutex(&ssl->send_mutex) != 0) {
-        WOLFSSL_MSG("Bad Lock Mutex count");
-        return BAD_MUTEX_E;
-    }
     recvd = ssl->ctx->CBIORecv(ssl, (char *)buf, (int)sz, ssl->IOCB_ReadCtx);
-
-    UnLockMutex(&ssl->send_mutex);
     if (recvd < 0)
         switch (recvd) {
             case WOLFSSL_CBIO_ERR_GENERAL:        /* general/unknown error */
@@ -3385,12 +3385,6 @@ int SendBuffered(WOLFSSL* ssl)
         return SOCKET_ERROR_E;
     }
 
-    //lock
-    if (LockMutex(&ssl->send_mutex) != 0) {
-        WOLFSSL_MSG("Bad Lock Mutex count");
-        return BAD_MUTEX_E;
-    }
-
     while (ssl->buffers.outputBuffer.length > 0) {
 #ifdef WOLFSSL_MPDTLS
         if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE && ssl->keys.dtls_sequence_number > 1) {
@@ -3423,7 +3417,6 @@ int SendBuffered(WOLFSSL* ssl)
             switch (sent) {
 
                 case WOLFSSL_CBIO_ERR_WANT_WRITE:        /* would block */
-                    UnLockMutex(&ssl->send_mutex);
                     return WANT_WRITE;
 
                 case WOLFSSL_CBIO_ERR_CONN_RST:          /* connection reset */
@@ -3441,7 +3434,6 @@ int SendBuffered(WOLFSSL* ssl)
                                 XSTRNCPY(ssl->timeoutInfo.timeoutName,
                                         "send() timeout", MAX_TIMEOUT_NAME_SZ);
                                 WOLFSSL_MSG("Got our timeout");
-                                UnLockMutex(&ssl->send_mutex);
                                 return WANT_WRITE;
                             }
                         }
@@ -3455,13 +3447,11 @@ int SendBuffered(WOLFSSL* ssl)
                 default:
                     break;
             }
-            UnLockMutex(&ssl->send_mutex);
             return SOCKET_ERROR_E;
         }
 
         if (sent > (int)ssl->buffers.outputBuffer.length) {
             WOLFSSL_MSG("SendBuffered() out of bounds read");
-            UnLockMutex(&ssl->send_mutex);
             return SEND_OOB_READ_E;
         }
 
@@ -3472,8 +3462,6 @@ int SendBuffered(WOLFSSL* ssl)
 
     if (ssl->buffers.outputBuffer.dynamicFlag)
         ShrinkOutputBuffer(ssl);
-
-    UnLockMutex(&ssl->send_mutex);
 
 #ifdef WOLFSSL_MPDTLS
     if (ssl->options.mpdtls && ssl->options.handShakeState == HANDSHAKE_DONE) {

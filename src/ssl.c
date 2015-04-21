@@ -758,6 +758,10 @@ int wolfSSL_SetTmpDH(WOLFSSL* ssl, const unsigned char* p, int pSz,
 int wolfSSL_write(WOLFSSL* ssl, const void* data, int sz)
 {
     int ret;
+    if (LockMutex(&ssl->access_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
+    }
 
     WOLFSSL_ENTER("SSL_write()");
 
@@ -772,6 +776,7 @@ int wolfSSL_write(WOLFSSL* ssl, const void* data, int sz)
 
     WOLFSSL_LEAVE("SSL_write()", ret);
 
+    UnLockMutex(&ssl->access_mutex);
     if (ret < 0)
         return SSL_FATAL_ERROR;
     else
@@ -822,9 +827,16 @@ int wolfSSL_peek(WOLFSSL* ssl, void* data, int sz)
 
 int wolfSSL_read(WOLFSSL* ssl, void* data, int sz)
 {
+    if (LockMutex(&ssl->access_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
+    }
     WOLFSSL_ENTER("wolfSSL_read()");
-
-    return wolfSSL_read_internal(ssl, data, sz, FALSE);
+    int ret;
+    ret = wolfSSL_read_internal(ssl, data, sz, FALSE);
+    WOLFSSL_LEAVE("wolfssl_read()",ret);
+    UnLockMutex(&ssl->access_mutex);
+    return ret;
 }
 
 

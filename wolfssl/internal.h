@@ -1263,9 +1263,9 @@ typedef struct WOLFSSL_DTLS_CTX {
     void MpdtlsSocksInit(WOLFSSL*, MPDTLS_SOCKS**);
     void MpdtlsSocksFree(WOLFSSL*, MPDTLS_SOCKS**);
 
-    #define FEEDBACK_TX  5
-    #define FEEDBACK_RTX 2
-    #define FEEDBACK_CAPACITY 10
+    #define FEEDBACK_TX  60
+    #define FEEDBACK_RTX 40
+    #define FEEDBACK_CAPACITY 120
 
     #define EWMA_ALPHA 0.875
 
@@ -2214,7 +2214,7 @@ struct WOLFSSL {
     CipherSpecs     specs;
     Keys            keys;
     Options         options;
-    wolfSSL_Mutex   send_mutex;
+    wolfSSL_Mutex   access_mutex;
 #ifdef OPENSSL_EXTRA
     WOLFSSL_BIO*     biord;              /* socket bio read  to free/close */
     WOLFSSL_BIO*     biowr;              /* socket bio write to free/close */
