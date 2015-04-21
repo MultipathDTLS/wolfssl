@@ -3242,7 +3242,7 @@ retry:
                     maxfd = sd;
             }
         }
-
+        WOLFSSL_ENTER("Select");
         result = select(maxfd + 1, &recvfds, NULL, &errfds, &timeout);
         WOLFSSL_LEAVE("Select", result);
         if (result!=0) {
@@ -6937,6 +6937,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 }
 
 static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
+    WOLFSSL_ENTER("Do Feedback");
     int ret;
     uint i;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
@@ -7003,11 +7004,12 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
-
+    WOLFSSL_LEAVE("Do Feedback",0);
     return 0;
 }
 
 static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
+    WOLFSSL_ENTER("Do Feedback Ack");
     int ret;
     MPDtlsFeedbackAck *ack;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
@@ -7047,6 +7049,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     // We have finished with that. "Empty" the buffer.
     ssl->buffers.clearOutputBuffer.length = 0;
 
+    WOLFSSL_LEAVE("Do Feedback Ack",0);
     //otherwise we wait for another ack 
     return 0;
 }
@@ -7165,6 +7168,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 /* process Heartbeat */
 static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word32 totalSz)
 {
+    WOLFSSL_ENTER("Do heartbeat");
     int ret = 0;
 
     /* make sure can read the message */
@@ -7263,6 +7267,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
 
     *inOutIdx += paddingSz;
 
+    WOLFSSL_LEAVE("Do Heartbeat", ret);
     return ret;
 }
 #endif /* HAVE_HEARTBEAT */
@@ -7922,6 +7927,7 @@ int ProcessReply(WOLFSSL* ssl)
 */
 int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload_length, const byte* payload)
 {
+    WOLFSSL_ENTER("Send Heartbeat");
     byte              *output;
     word32             length, idx = RECORD_HEADER_SZ;
     int                ret;
@@ -7956,7 +7962,7 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
 
 #ifdef WOLFSSL_DTLS
         if (ssl->options.dtls)
-            length = min(length, 1472);//MAX_UDP_SIZE);
+            length = min(length, 472);//MAX_UDP_SIZE);
 #endif
 
     /* check for avalaible size */
@@ -8019,7 +8025,9 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     
     ssl->buffers.outputBuffer.length += length;
 
-    return SendBuffered(ssl);
+    ret = SendBuffered(ssl);
+    WOLFSSL_LEAVE("Send Heartbeat, type : ", type);
+    return ret;
 }
 
 #endif /* HAVE_HEARTBEAT */
@@ -8893,10 +8901,11 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 }
 
 int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
-    WOLFSSL_MSG("SEND FEEDBACK");
+    WOLFSSL_ENTER("Send Feedback");
     size_t sz = FEEDBACK_SZ;
     byte output[sz];
     int offset = 0;
+    int ret;
 
     //we merge these data with the cache
     flow->r_stats.min_seq_cache = min(flow->r_stats.min_seq, flow->r_stats.min_seq_cache);
@@ -8925,7 +8934,9 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     flow->r_stats.threshold = FEEDBACK_RTX;
 
     ssl->mpdtls_pref_flow = flow;
-    return SendPacket(ssl, (void*) output, sz, feedback);
+    ret = SendPacket(ssl, (void*) output, sz, feedback);
+    WOLFSSL_LEAVE("Send Feedback",ret);
+    return ret;
 }
 
 /**
@@ -8970,13 +8981,16 @@ int SendWantConnectAck(WOLFSSL *ssl, uint seq, byte options) {
 }
 
 int SendFeedbackAck(WOLFSSL *ssl, uint seq) {
-    WOLFSSL_MSG("Send feedback ack");
+    WOLFSSL_ENTER("Send feedback ack");
+    int ret;
     size_t sz = sizeof(MPDtlsFeedbackAck);
     MPDtlsFeedbackAck ack;
     c32to48(seq, ack.seq);
 
     ssl->mpdtls_pref_flow = getFlowFromSocket(ssl->mpdtls_flows, ssl->buffers.dtlsCtx.fd);
-    return SendPacket(ssl, (void*) &ack, sz, feedback_ack);
+    ret = SendPacket(ssl, (void*) &ack, sz, feedback_ack);
+    WOLFSSL_LEAVE("Send Feedback ack",ret);
+    return ret;
 }
 #endif 
 /* MPDTLS */

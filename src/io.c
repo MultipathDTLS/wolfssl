@@ -444,7 +444,7 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
             return WOLFSSL_CBIO_ERR_WANT_READ;
         }
     }
-
+    WOLFSSL_LEAVE("Embed receive from",recvd);
     return recvd;
 }
 
