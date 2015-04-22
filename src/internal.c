@@ -2151,7 +2151,22 @@ int mpdtlsRemoveInterface(WOLFSSL *ssl, MPDTLS_FLOWS *flows, MPDTLS_FLOW *flow) 
     ret =  DeleteAddr(ssl->mpdtls_host, (struct sockaddr*) &flow->host, sizeof(struct sockaddr_storage));
     mpdtlsRemoveFlowByIndex(ssl, flows, idx, NULL);
     SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+    WOLFSSL_LEAVE("Remove interface",ret);
     return ret;
+}
+
+void mpdtlsSyncFlow(WOLFSSL *ssl, MPDTLS_FLOWS *flows) {
+    WOLFSSL_ENTER("Sync Flow");
+    int i;
+    MPDTLS_FLOW *flow;
+    for(i = 0; i < flows->nbrFlows; i++) {
+        flow = &flows->flows[i];
+        if(mpdtlsIsAddrPresent(ssl->mpdtls_host, (struct sockaddr *) &flow->host) < 0 
+        || mpdtlsIsAddrPresent(ssl->mpdtls_remote, (struct sockaddr *) &flow->remote) < 0) {
+            mpdtlsRemoveFlowByIndex(ssl, flows, i, NULL);
+        }
+    }
+    WOLFSSL_LEAVE("Sync Flow",0);
 }
 
 /**
@@ -6911,6 +6926,9 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
         FromMPDTLSToSockAddr(&res, &sz, changeAddr);
         InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &res, sz);
     }
+
+    mpdtlsSyncFlow(ssl, ssl->mpdtls_flows_waiting);
+    mpdtlsSyncFlow(ssl, ssl->mpdtls_flows);
 
 #ifdef DEBUG_WOLFSSL
     int j;
