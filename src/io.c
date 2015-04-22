@@ -403,8 +403,7 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
                 //error on socket, we delete the flow
                 MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
                 if(fail_flow!=NULL) {
-                    WOLFSSL_MSG("we delete the flow");
-                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
+                    mpdtlsRemoveInterface(ssl, ssl->mpdtls_flows, fail_flow);
                 }
             }
 #endif   
@@ -474,8 +473,7 @@ int EmbedSendTo(WOLFSSL* ssl, char *buf, int sz, void *ctx)
                 //error on socket, we delete the flow
                 MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
                 if(fail_flow!=NULL) {
-                    WOLFSSL_MSG("we delete the flow");
-                    mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows, &fail_flow->host, &fail_flow->remote, NULL);
+                    mpdtlsRemoveInterface(ssl, ssl->mpdtls_flows, fail_flow);
                 }
                 ssl->mpdtls_pref_flow = NULL;
             }

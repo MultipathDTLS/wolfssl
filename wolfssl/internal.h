@@ -2586,6 +2586,7 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL void FromSockToMPDTLSAddr(MPDtlsAddress*, struct sockaddr*);
     WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, socklen_t*, MPDtlsAddress*);
     WOLFSSL_LOCAL int FromSockToPrint(struct sockaddr*, int, char*, int);
+    WOLFSSL_LOCAL int mpdtlsRemoveInterface(WOLFSSL*, MPDTLS_FLOWS*, MPDTLS_FLOW*);
 #endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS

@@ -2139,6 +2139,22 @@ void mpdtlsRemoveFlowByIndex(WOLFSSL *ssl, MPDTLS_FLOWS *flows, int idx_flow, in
 }
 
 /**
+*   We delete the source interface of this flow and delete the flow
+*/
+int mpdtlsRemoveInterface(WOLFSSL *ssl, MPDTLS_FLOWS *flows, MPDTLS_FLOW *flow) {
+    WOLFSSL_ENTER("Remove interface");
+    int idx = mpdtlsIsFlowPresent(flows, (struct sockaddr*) &flow->host, (struct sockaddr*) &flow->remote);
+    if (idx < 0) {
+        return -1;
+    }
+    int ret;
+    ret =  DeleteAddr(ssl->mpdtls_host, (struct sockaddr*) &flow->host, sizeof(struct sockaddr_storage));
+    mpdtlsRemoveFlowByIndex(ssl, flows, idx, NULL);
+    SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+    return ret;
+}
+
+/**
 * return the flow associated to a particular socket sd, useful to upate stats
 * return NULL is no such flow exists
 */
