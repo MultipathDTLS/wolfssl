@@ -240,7 +240,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
             }
             if(valid) {
                 InsertAddr(ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
-                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cl1, sz, (struct sockaddr*) &cl2, sz2, fd, NULL);
+                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cl2, sz2, (struct sockaddr*) &cl1, sz, fd, NULL);
             }
         }
 
