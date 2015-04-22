@@ -3367,10 +3367,6 @@ retry:
             default:
                 return recvd;
         }
-#ifdef WOLFSSL_MPDTLS
-    if(ssl->options.mpdtls)
-        checkTimeouts(ssl, ssl->buffers.dtlsCtx.fd); 
-#endif  
     return recvd;
 }
 
