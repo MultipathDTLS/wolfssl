@@ -2150,7 +2150,11 @@ int mpdtlsRemoveInterface(WOLFSSL *ssl, MPDTLS_FLOWS *flows, MPDTLS_FLOW *flow) 
     int ret;
     ret =  DeleteAddr(ssl->mpdtls_host, (struct sockaddr*) &flow->host, sizeof(struct sockaddr_storage));
     mpdtlsRemoveFlowByIndex(ssl, flows, idx, NULL);
-    SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+
+    //artificially trigger a CIM when we receive/send a packet
+    timerclear(&ssl->mpdtls_last_cim);
+    ssl->mpdtls_last_cim.tv_usec = 1;
+
     WOLFSSL_LEAVE("Remove interface",ret);
     return ret;
 }
@@ -3363,7 +3367,10 @@ retry:
             default:
                 return recvd;
         }
-
+#ifdef WOLFSSL_MPDTLS
+    if(ssl->options.mpdtls)
+        checkTimeouts(ssl, ssl->buffers.dtlsCtx.fd); 
+#endif  
     return recvd;
 }
 
