@@ -1586,6 +1586,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 
     ssl->options.dtls = ssl->version.major == DTLS_MAJOR;
     ssl->options.mpdtls = 0; /* determined later by exchange between client -server */
+    ssl->options.metadatapackets = 0;
     ssl->options.partialWrite  = ctx->partialWrite;
     ssl->options.quietShutdown = ctx->quietShutdown;
     ssl->options.groupMessages = ctx->groupMessages;
@@ -3409,6 +3410,7 @@ retry:
             default:
                 return recvd;
         }
+    
     return recvd;
 }
 
@@ -6937,6 +6939,7 @@ int DoApplicationData(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
 {
     int ret, i;
+    word32 length_backup = ssl->buffers.clearOutputBuffer.length;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
@@ -6998,7 +7001,7 @@ static int DoChangeInterface(WOLFSSL* ssl, byte* input, word32* inOutIdx)
     }
     
     // We have finished with that. "Empty" the buffer.
-    ssl->buffers.clearOutputBuffer.length = 0;
+    ssl->buffers.clearOutputBuffer.length = length_backup;
 
     return 0;
 }
@@ -7007,6 +7010,7 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     WOLFSSL_ENTER("Do Feedback");
     int ret;
     uint i;
+    word32 length_backup = ssl->buffers.clearOutputBuffer.length;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
@@ -7072,8 +7076,8 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     SendFeedbackAck(ssl, seqNumber);
 
     // We have finished with that. "Empty" the buffer.
-    ssl->buffers.clearOutputBuffer.length = 0;
-    WOLFSSL_LEAVE("Do Feedback",0);
+    ssl->buffers.clearOutputBuffer.length = length_backup;
+    WOLFSSL_LEAVE("Do Feedback",length_backup);
     return 0;
 }
 
@@ -7081,6 +7085,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     WOLFSSL_ENTER("Do Feedback Ack");
     int ret;
     MPDtlsFeedbackAck *ack;
+    word32 length_backup = ssl->buffers.clearOutputBuffer.length;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
@@ -7116,9 +7121,9 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     }
 
     // We have finished with that. "Empty" the buffer.
-    ssl->buffers.clearOutputBuffer.length = 0;
+    ssl->buffers.clearOutputBuffer.length = length_backup;
 
-    WOLFSSL_LEAVE("Do Feedback Ack",0);
+    WOLFSSL_LEAVE("Do Feedback Ack",length_backup);
     //otherwise we wait for another ack 
     return 0;
 }
@@ -7126,6 +7131,7 @@ static int DoFeedbackAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     int ret;
     MPDtlsWantConnect *wc;
+    word32 length_backup = ssl->buffers.clearOutputBuffer.length;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
@@ -7173,7 +7179,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     //send ack back
     SendWantConnectAck(ssl, ssl->keys.dtls_state.curSeq, opts);
     // We have finished with that. "Empty" the buffer.
-    ssl->buffers.clearOutputBuffer.length = 0;
+    ssl->buffers.clearOutputBuffer.length = length_backup;
 
     return 0;
 }
@@ -7181,6 +7187,7 @@ static int DoWantConnect(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
 static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     int ret,i, idx;
     MPDtlsWantConnectAck *ack;
+    word32 length_backup = ssl->buffers.clearOutputBuffer.length;
     if ((ret = DoApplicationData(ssl, input, inOutIdx)) != 0) {
         WOLFSSL_ERROR(ret);
         return ret;
@@ -7224,7 +7231,7 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
     //if we don't find such a flow, we do nothing
 
     // We have finished with that. "Empty" the buffer.
-    ssl->buffers.clearOutputBuffer.length = 0;
+    ssl->buffers.clearOutputBuffer.length = length_backup;
 
     //otherwise we wait for another ack 
     return 0;
@@ -9074,12 +9081,21 @@ int SendFeedbackAck(WOLFSSL *ssl, uint seq) {
 /* MPDTLS */
 
 
-int SendPacket(WOLFSSL* ssl, const void* data, int sz, int type)
+int SendPacket(WOLFSSL* ssl, const void* mdata, int msz, int type)
 {
     int sent = 0,  /* plainText size */
         sendSz,
         ret,
+        sz = msz,
         dtlsExtra = 0;
+    const void *data = mdata;
+
+#ifdef WOLFSSL_MPDTLS
+    if (ssl->options.metadatapackets == 1 && type == application_data) {
+        sz = ((METADATA_PACKET*) mdata)->length;
+        data = ((METADATA_PACKET*) mdata)->content;
+    }
+#endif
 
     if (ssl->error == WANT_WRITE)
         ssl->error = 0;
@@ -9165,6 +9181,11 @@ int SendPacket(WOLFSSL* ssl, const void* data, int sz, int type)
             return BUILD_MSG_ERROR;
 
         ssl->buffers.outputBuffer.length += sendSz;
+
+#ifdef WOLFSSL_MPDTLS
+        if (ssl->options.metadatapackets == 1)
+            ssl->SchedulerFlow = ((METADATA_PACKET *)mdata)->flow_id;
+#endif /* WOLFSSL_MPDTLS */
 
         if ( (ret = SendBuffered(ssl)) < 0) {
             WOLFSSL_ERROR(ret);

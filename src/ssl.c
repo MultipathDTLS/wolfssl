@@ -327,6 +327,14 @@ int wolfSSL_mpdtls(WOLFSSL* ssl)
 
 
 #ifdef WOLFSSL_MPDTLS
+void wolfSSL_MetaData_ON(WOLFSSL *ssl) {
+    ssl->options.metadatapackets = 1;
+}
+
+void wolfSSL_MetaData_OFF(WOLFSSL *ssl) {
+    ssl->options.metadatapackets = 0;
+}
+
 int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
 {
     int error;

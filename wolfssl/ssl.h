@@ -78,6 +78,8 @@ typedef struct WOLFSSL_X509_CHAIN WOLFSSL_X509_CHAIN;
 typedef struct WOLFSSL_CERT_MANAGER WOLFSSL_CERT_MANAGER;
 typedef struct WOLFSSL_SOCKADDR     WOLFSSL_SOCKADDR;
 
+typedef struct METADATA_PACKET      WOLFSSL_METADATA;
+
 /* redeclare guard */
 #define WOLFSSL_TYPES_DEFINED
 
@@ -340,7 +342,9 @@ WOLFSSL_API int  wolfSSL_dtls_set_peer(WOLFSSL*, void*, unsigned int);
 WOLFSSL_API int  wolfSSL_dtls_get_peer(WOLFSSL*, void*, unsigned int*);
 
 /*  MPDTLS functions    */
-WOLFSSL_API int  wolfSSL_mpdtls(WOLFSSL* ssl);
+WOLFSSL_API int  wolfSSL_mpdtls(WOLFSSL*);
+WOLFSSL_API void wolfSSL_MetaData_ON(WOLFSSL*);
+WOLFSSL_API void wolfSSL_MetaData_OFF(WOLFSSL*);
 WOLFSSL_API int  wolfSSL_mpdtls_ask_connect(WOLFSSL*, char**, size_t*);
 WOLFSSL_API int  wolfSSL_mpdtls_connect_addr(WOLFSSL*, int, int);
 WOLFSSL_API int  wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char*);
