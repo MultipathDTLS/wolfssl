@@ -1022,7 +1022,13 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
 #endif /* WOLFSSL_USER_IO */
 
 #ifdef WOLFSSL_MPDTLS
-    WOLFSSL_API int EmbedScheduler(WOLFSSL* ssl, void* flows);
+    WOLFSSL_API int EmbedScheduler(WOLFSSL*, void*);
+    typedef enum {
+        ROUND_ROBIN,
+        OPTIMIZE_LATENCY,
+        OPTIMIZE_BANDWIDTH
+    } MPDTLS_SCHED_POLICY;
+    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY);
 #endif
 
 #ifdef HAVE_NETX

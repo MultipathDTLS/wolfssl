@@ -2196,13 +2196,30 @@ MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS *flows, int sd) {
 * Is in charge of splitting the pool of tokens among the flows
 * following the scheduling Policy defined.
 */
-void applyShedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
+void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
 {
     int i;
     MPDTLS_FLOW *flow;
     int totalTokens = MPDTLS_SCHEDULER_GRANULARITY;
     switch(ssl->mpdtls_sched_policy) {
-        case OPTIMIZE_LATENCY:
+        case OPTIMIZE_LATENCY: ;
+            uint64_t maxLatency = 0;
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                maxLatency = max(flow->s_stats.forward_delay,maxLatency);
+            }
+            uint64_t totaldiff = 0;
+            //we remove the clock desynchronization term by taking the difference between two measures
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                totaldiff += maxLatency - flow->s_stats.forward_delay;
+            }
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                flow->tokens = (uint) ((maxLatency - flow->s_stats.forward_delay) / (float) totaldiff) * totalTokens;
+            }
+        break;
+
         case OPTIMIZE_BANDWIDTH:
                 //TO DO implement other policies
         case ROUND_ROBIN :
@@ -7045,7 +7062,7 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         //take the EWMA between previous and current
         flow->s_stats.loss_rate = flow->s_stats.loss_rate * EWMA_ALPHA + lr * (1 - EWMA_ALPHA);
         //we recompute the tokens distribution 
-        applyShedulingPolicy(ssl, ssl->mpdtls_flows);
+        applySchedulingPolicy(ssl, ssl->mpdtls_flows);
     }
 
 

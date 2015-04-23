@@ -1345,13 +1345,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
     int mpdtlsIsAddrPresent(MPDTLS_ADDRS*, const struct sockaddr*);
     int mpdtlsGetNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
-    void applyShedulingPolicy(WOLFSSL*, MPDTLS_FLOWS*);
-
-    typedef enum {
-        ROUND_ROBIN,
-        OPTIMIZE_LATENCY,
-        OPTIMIZE_BANDWIDTH
-    } MPDTLS_SCHED_POLICY;
+    void applySchedulingPolicy(WOLFSSL*, MPDTLS_FLOWS*);
 
 #endif /* WOLFSSL_MPDTLS */
 
