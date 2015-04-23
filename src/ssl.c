@@ -509,7 +509,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         sprintf(buf,"%sPackets received : %ld \n",buf,(long) flows[i].r_stats.nbr_packets_received);
         sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq);
         sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq);
-        sprintf(buf,"%sBackward delay : %ld \n",buf,(long) flows[i].r_stats.backward_delay);
+        sprintf(buf,"%sBackward delay : %ld ms\n",buf,(long) flows[i].r_stats.backward_delay);
 
         sprintf(buf,"%s----- Receiver Cache ----- \n",buf);
         // stats info
@@ -527,7 +527,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
             sprintf(seqbuf,"%s %d",seqbuf, flows[i].s_stats.packets_sent[j]);
         }
         sprintf(buf,"%sPackets sent : %s] \n",buf,seqbuf);
-        sprintf(buf,"%sForward delay : %ld \n",buf, (long) flows[i].s_stats.forward_delay);
+        sprintf(buf,"%sForward delay : %ld ms\n",buf, (long) flows[i].s_stats.forward_delay);
         sprintf(buf,"%sLoss Rate : %f \n",buf,flows[i].s_stats.loss_rate);
 
 

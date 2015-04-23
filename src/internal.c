@@ -7269,12 +7269,15 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
                 timersub(&remote,&host,&res);
             }
             
-            uint64_t delay = res.tv_sec*1000000+res.tv_usec;
+            uint64_t delay = res.tv_sec*1000+res.tv_usec/1000; //we consider ms
 
             //exponential mean with jacobson value
-
-            cur_flow->r_stats.backward_delay = EWMA_ALPHA * cur_flow->r_stats.backward_delay
+            if(cur_flow->r_stats.backward_delay!=0) {
+                cur_flow->r_stats.backward_delay = EWMA_ALPHA * cur_flow->r_stats.backward_delay
                                                 + (1 - EWMA_ALPHA) * delay;
+            } else { //if it is the first oner
+                cur_flow->r_stats.backward_delay = delay;
+            }
             //then fallback to regular HB_request
 
 #endif
