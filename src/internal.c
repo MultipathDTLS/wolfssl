@@ -7262,7 +7262,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
                 timersub(&remote,&host,&res);
             }
             
-            uint64_t delay = res.tv_sec*1000000+res.tv_usec;
+            uint64_t delay = res.tv_sec*1000+res.tv_usec/1000; //we consider ms
 
             //exponential mean with jacobson value
 
