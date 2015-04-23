@@ -1586,6 +1586,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 
     ssl->options.dtls = ssl->version.major == DTLS_MAJOR;
     ssl->options.mpdtls = 0; /* determined later by exchange between client -server */
+    ssl->options.metadatapackets = 0;
     ssl->options.partialWrite  = ctx->partialWrite;
     ssl->options.quietShutdown = ctx->quietShutdown;
     ssl->options.groupMessages = ctx->groupMessages;
@@ -3367,6 +3368,7 @@ retry:
             default:
                 return recvd;
         }
+    
     return recvd;
 }
 
@@ -9032,12 +9034,21 @@ int SendFeedbackAck(WOLFSSL *ssl, uint seq) {
 /* MPDTLS */
 
 
-int SendPacket(WOLFSSL* ssl, const void* data, int sz, int type)
+int SendPacket(WOLFSSL* ssl, const void* mdata, int msz, int type)
 {
     int sent = 0,  /* plainText size */
         sendSz,
         ret,
+        sz = msz,
         dtlsExtra = 0;
+    const void *data = mdata;
+
+#ifdef WOLFSSL_MPDTLS
+    if (ssl->options.metadatapackets == 1 && type == application_data) {
+        sz = ((METADATA_PACKET*) mdata)->length;
+        data = ((METADATA_PACKET*) mdata)->content;
+    }
+#endif
 
     if (ssl->error == WANT_WRITE)
         ssl->error = 0;

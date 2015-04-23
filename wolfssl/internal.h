@@ -1278,6 +1278,12 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define MPDTLS_REFUSE_CONNECTION 0x80
     #define MPDTLS_BACKUP_CONNECTION 0x40
 
+    typedef struct METADATA_PACKET {
+        byte*       content;
+        int         length;
+        int         flow_id;
+    } METADATA_PACKET;
+
     typedef struct MPDTLS_SENDER_STATS {
     	uint*		packets_sent;       //sequence number of packets sent
     	uint  		capacity;           //capacity of the array (mimic arraylist)
@@ -1969,6 +1975,7 @@ typedef struct Options {
     word16            usingNonblock:1;    /* are we using nonblocking socket */
     word16            saveArrays:1;       /* save array Memory for user get keys
                                            or psk */
+    word16            metadatapackets:1;
 #ifdef HAVE_POLY1305
     word16            oldPoly:1;        /* set when to use old rfc way of poly*/
 #endif
