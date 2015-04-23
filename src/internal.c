@@ -9138,6 +9138,11 @@ int SendPacket(WOLFSSL* ssl, const void* mdata, int msz, int type)
 
         ssl->buffers.outputBuffer.length += sendSz;
 
+#ifdef WOLFSSL_MPDTLS
+        if (ssl->options.metadatapackets == 1)
+            ssl->SchedulerFlow = ((METADATA_PACKET *)mdata)->flow_id;
+#endif /* WOLFSSL_MPDTLS */
+
         if ( (ret = SendBuffered(ssl)) < 0) {
             WOLFSSL_ERROR(ret);
             /* store for next call if WANT_WRITE or user embedSend() that

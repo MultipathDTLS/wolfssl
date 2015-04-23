@@ -2267,6 +2267,7 @@ struct WOLFSSL {
     MPDTLS_FLOWS*   mpdtls_flows_waiting; /* waiting flows (not yet connected) */
     MPDTLS_FLOW*    mpdtls_pref_flow;   /* Force socket selection */
     struct timeval  mpdtls_last_cim;    /* Timestamp of last CIM */
+    int             SchedulerFlow;
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
