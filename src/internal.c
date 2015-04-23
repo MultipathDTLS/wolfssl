@@ -7256,7 +7256,12 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
             remote.tv_usec = (long) usec;
             struct timeval host, res;
             gettimeofday(&host,NULL);
-            timersub(&host,&remote,&res);
+            if(timercmp(&host,&remote,>)) {
+                timersub(&host,&remote,&res);
+            } else {
+                timersub(&remote,&host,&res);
+            }
+            
             uint64_t delay = res.tv_sec*1000000+res.tv_usec;
 
             //exponential mean with jacobson value
