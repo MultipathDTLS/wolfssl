@@ -1278,6 +1278,8 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define MPDTLS_REFUSE_CONNECTION 0x80
     #define MPDTLS_BACKUP_CONNECTION 0x40
 
+    #define MPDTLS_SCHEDULER_GRANULARITY 100 //total tokens given by round
+
     typedef struct MPDTLS_SENDER_STATS {
     	uint*		packets_sent;       //sequence number of packets sent
     	uint  		capacity;           //capacity of the array (mimic arraylist)
@@ -1313,6 +1315,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
     	int 					sock;               //reference the connected socket if it exists
         uint                    wantConnectSeq;     //sequence number of the last wantConnect packet sent
+        uint                    tokens;             //number of tokens given by the scheduler to this flow
         MPDTLS_FLOW_HEARTBEAT   hb;                 //hb manager
     	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
     	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
@@ -1320,7 +1323,8 @@ typedef struct WOLFSSL_DTLS_CTX {
 
     typedef struct MPDTLS_FLOWS {
         int 			nbrFlows; /* Number of available flow */
-        int 			nextRound; /* Next flow for Round Robin sending (must be moved to scheduler logic) */
+        int 			cur_flow_idx; /* Flow selected for current packet sending (managed by scheduler)*/
+        uint            token_counter;  /* number of tokens already given to the current flow */
     	MPDTLS_FLOW*    flows; //the collection of flow
     } MPDTLS_FLOWS;
 
@@ -1341,6 +1345,14 @@ typedef struct WOLFSSL_DTLS_CTX {
     int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
     int mpdtlsIsAddrPresent(MPDTLS_ADDRS*, const struct sockaddr*);
     int mpdtlsGetNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
+    void applyShedulingPolicy(WOLFSSL*, MPDTLS_FLOWS*);
+
+    typedef enum {
+        ROUND_ROBIN,
+        OPTIMIZE_LATENCY,
+        OPTIMIZE_BANDWIDTH
+    } MPDTLS_SCHED_POLICY;
+
 #endif /* WOLFSSL_MPDTLS */
 
 
@@ -2253,13 +2265,14 @@ struct WOLFSSL {
     word32          dtls_expected_rx;
 #endif
 #ifdef WOLFSSL_MPDTLS
-    MPDTLS_ADDRS*   mpdtls_remote;      /* available addresses for remote host  */
-    MPDTLS_ADDRS*   mpdtls_host;        /* available addresses in host (nbr interfaces) */
-    MPDTLS_SOCKS*   mpdtls_pool;        /* unconnected sockets, free for use */
-    MPDTLS_FLOWS*   mpdtls_flows;       /* available flows */
-    MPDTLS_FLOWS*   mpdtls_flows_waiting; /* waiting flows (not yet connected) */
-    MPDTLS_FLOW*    mpdtls_pref_flow;   /* Force socket selection */
-    struct timeval  mpdtls_last_cim;    /* Timestamp of last CIM */
+    MPDTLS_ADDRS*       mpdtls_remote;      /* available addresses for remote host  */
+    MPDTLS_ADDRS*       mpdtls_host;        /* available addresses in host (nbr interfaces) */
+    MPDTLS_SOCKS*       mpdtls_pool;        /* unconnected sockets, free for use */
+    MPDTLS_FLOWS*       mpdtls_flows;       /* available flows */
+    MPDTLS_FLOWS*       mpdtls_flows_waiting; /* waiting flows (not yet connected) */
+    MPDTLS_FLOW*        mpdtls_pref_flow;   /* Force socket selection */
+    struct timeval      mpdtls_last_cim;    /* Timestamp of last CIM */
+    MPDTLS_SCHED_POLICY mpdtls_sched_policy; /* The policy to be used for scheduling */
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */

@@ -413,7 +413,7 @@ int InitSSL_Ctx(WOLFSSL_CTX* ctx, WOLFSSL_METHOD* method)
             ctx->CBIOSend   = EmbedSendTo;
             ctx->CBIOCookie = EmbedGenerateCookie;
         #ifdef WOLFSSL_MPDTLS
-            ctx->CBIOSchedule = EmbedSchedulerRoundRobin;
+            ctx->CBIOSchedule = EmbedScheduler;
         #endif
         }
     #endif
@@ -1733,6 +1733,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows_waiting));
     MpdtlsAddrsRestore(ssl, &(ssl->mpdtls_host));
     ssl->mpdtls_pref_flow = NULL;
+    ssl->mpdtls_sched_policy = ROUND_ROBIN;
     timerclear(&ssl->mpdtls_last_cim);
 #endif /* WOLFSSL_MPDTLS */
 
@@ -1827,7 +1828,8 @@ void MpdtlsFlowsInit(WOLFSSL* ssl, MPDTLS_FLOWS** flows) {
     *flows = (MPDTLS_FLOWS*) XMALLOC(sizeof(MPDTLS_FLOWS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
     (*flows)->nbrFlows = 0;
-    (*flows)->nextRound = 0;
+    (*flows)->cur_flow_idx = 0;
+    (*flows)->token_counter = 0;
     (*flows)->flows = NULL;
 }
 
@@ -2056,6 +2058,7 @@ int mpdtlsAddNewFlow(WOLFSSL *ssl, MPDTLS_FLOWS *mp_flows, const struct sockaddr
     cur_flow->sock = sd;
 
     cur_flow->wantConnectSeq = 0;
+    cur_flow->tokens = 0; //will be adapter by the scheduler later on
 
     //heartbeat
 
@@ -2187,6 +2190,28 @@ MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS *flows, int sd) {
     } 
 
     return NULL;    
+}
+
+/**
+* Is in charge of splitting the pool of tokens among the flows
+* following the scheduling Policy defined.
+*/
+void applyShedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
+{
+    int i;
+    MPDTLS_FLOW *flow;
+    int totalTokens = MPDTLS_SCHEDULER_GRANULARITY;
+    switch(ssl->mpdtls_sched_policy) {
+        case OPTIMIZE_LATENCY:
+        case OPTIMIZE_BANDWIDTH:
+                //TO DO implement other policies
+        case ROUND_ROBIN :
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                flow->tokens = totalTokens/flows->nbrFlows;
+            }
+        break;
+    }
 }
 
 
@@ -7019,6 +7044,8 @@ static int DoFeedback(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
         float lr = (flow->s_stats.waiting_ack - packets_count) / (float) flow->s_stats.waiting_ack;
         //take the EWMA between previous and current
         flow->s_stats.loss_rate = flow->s_stats.loss_rate * EWMA_ALPHA + lr * (1 - EWMA_ALPHA);
+        //we recompute the tokens distribution 
+        applyShedulingPolicy(ssl, ssl->mpdtls_flows);
     }
 
 
@@ -7268,7 +7295,7 @@ static int DoHeartbeatMessage(WOLFSSL* ssl, byte* input, word32* inOutIdx, word3
             if(cur_flow->r_stats.backward_delay!=0) {
                 cur_flow->r_stats.backward_delay = EWMA_ALPHA * cur_flow->r_stats.backward_delay
                                                 + (1 - EWMA_ALPHA) * delay;
-            } else { //if it is the first oner
+            } else { //if it is the first one
                 cur_flow->r_stats.backward_delay = delay;
             }
             //then fallback to regular HB_request

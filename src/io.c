@@ -538,16 +538,30 @@ int EmbedGenerateCookie(WOLFSSL* ssl, byte *buf, int sz, void *ctx)
 #endif /* WOLFSSL_DTLS */
 
 #ifdef WOLFSSL_MPDTLS
-int EmbedSchedulerRoundRobin(WOLFSSL* ssl, void* _flows)
+/**
+*   Scheduler will determine which flow must be used for the next sent
+*   Use scheduling policy
+*/
+int EmbedScheduler(WOLFSSL* ssl, void* _flows)
 {
     (void) ssl;
     MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *)_flows;
-    
-    flows->nextRound++;
-    if(flows->nextRound >= flows->nbrFlows)
-        flows->nextRound = 0;
+    if(flows->nbrFlows == 0) {
+        return NO_FLOW_E;
+    }
 
-    return flows->flows[flows->nextRound].sock;
+    if(flows->cur_flow_idx >= flows->nbrFlows)
+        flows->cur_flow_idx = 0;
+
+    MPDTLS_FLOW *flow = &flows->flows[flows->cur_flow_idx];
+    if(flows->token_counter < flow->tokens) { //if the flow has still some tokens
+        flows->token_counter++;
+    } else {
+        flows->cur_flow_idx++;
+        flows->token_counter = 0;
+    }
+
+    return flow->sock;
 }
 
 #endif /* WOLFSSL_MPDTLS */

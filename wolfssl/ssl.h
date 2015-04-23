@@ -1022,7 +1022,7 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
 #endif /* WOLFSSL_USER_IO */
 
 #ifdef WOLFSSL_MPDTLS
-    WOLFSSL_API int EmbedSchedulerRoundRobin(WOLFSSL* ssl, void* flows);
+    WOLFSSL_API int EmbedScheduler(WOLFSSL* ssl, void* flows);
 #endif
 
 #ifdef HAVE_NETX

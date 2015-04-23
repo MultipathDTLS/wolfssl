@@ -241,6 +241,7 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
             if(valid) {
                 InsertAddr(ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
                 mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cl2, sz2, (struct sockaddr*) &cl1, sz, fd, NULL);
+                applyShedulingPolicy(ssl, ssl->mpdtls_flows);
             }
         }
 
@@ -495,6 +496,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
         sprintf(buf,"%sIP dst : %s \n",buf,namebuf);
+        sprintf(buf,"%sSupport %d %% of the connection",buf, flows[i].tokens);
 
         sprintf(buf,"%s----- Receiver Stats ----- \n",buf);
         // stats info
@@ -571,6 +573,7 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
                 InsertAddr(ssl->mpdtls_host, host, hostSz);
                 //we must add a flow here as well
                 mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl), NULL);
+                applyShedulingPolicy(ssl, ssl->mpdtls_flows);
             }
         } else {
             WOLFSSL_MSG("Error on connect in set peer");
