@@ -1272,7 +1272,7 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define HEARTBEAT_TX 10
     #define HEARTBEAT_MAX_THR 40
     #define CIM_RTX 10
-    #define FLOW_RETRY 30
+    #define FLOW_RETRY 300
 
     //options for wantConnect
     #define MPDTLS_REFUSE_CONNECTION 0x80
