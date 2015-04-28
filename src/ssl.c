@@ -493,47 +493,47 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
     bufSz = ssl->mpdtls_flows->nbrFlows * 10000;
     char buf[bufSz];
     buf[0] = '\0';
+    int idx = 0;
 
     MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
     for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++) {
         char namebuf[50];
-        sprintf(buf,"%s---- Stats for Flow N° %d ---- \n",buf, i);
+        idx += sprintf(buf+idx,"---- Stats for Flow N° %d ---- \n", i);
         getnameinfo((struct sockaddr *) &(flows[i].host),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
-        sprintf(buf,"%sIP src : %s \n",buf,namebuf);
+        idx += sprintf(buf+idx,"IP src : %s \n",namebuf);
         getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
-        sprintf(buf,"%sIP dst : %s \n",buf,namebuf);
-        sprintf(buf,"%sSupport %d %% of the connection\n",buf, flows[i].tokens);
+        idx += sprintf(buf+idx,"IP dst : %s \n",namebuf);
+        idx += sprintf(buf+idx,"Support %d %% of the connection\n", flows[i].tokens);
 
-        sprintf(buf,"%s----- Receiver Stats ----- \n",buf);
+        idx += sprintf(buf+idx,"----- Receiver Stats ----- \n");
         // stats info
-        sprintf(buf,"%sPackets received : %ld \n",buf,(long) flows[i].r_stats.nbr_packets_received);
-        sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq);
-        sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq);
-        sprintf(buf,"%sBackward delay : %ld ms\n",buf,(long) flows[i].r_stats.backward_delay);
+        idx += sprintf(buf+idx,"Packets received : %ld \n",(long) flows[i].r_stats.nbr_packets_received);
+        idx += sprintf(buf+idx,"Min_Seq received : %d \n",flows[i].r_stats.min_seq);
+        idx += sprintf(buf+idx,"Max_Seq received : %d \n",flows[i].r_stats.max_seq);
+        idx += sprintf(buf+idx,"Backward delay : %ld ms\n",(long) flows[i].r_stats.backward_delay);
 
-        sprintf(buf,"%s----- Receiver Cache ----- \n",buf);
+        idx += sprintf(buf+idx,"----- Receiver Cache ----- \n");
         // stats info
-        sprintf(buf,"%sPackets received : %ld \n",buf,(long) flows[i].r_stats.nbr_packets_received_cache);
-        sprintf(buf,"%sMin_Seq received : %d \n",buf,flows[i].r_stats.min_seq_cache);
-        sprintf(buf,"%sMax_Seq received : %d \n",buf,flows[i].r_stats.max_seq_cache);
+        idx += sprintf(buf+idx,"Packets received : %ld \n",(long) flows[i].r_stats.nbr_packets_received_cache);
+        idx += sprintf(buf+idx,"Min_Seq received : %d \n",flows[i].r_stats.min_seq_cache);
+        idx += sprintf(buf+idx,"Max_Seq received : %d \n",flows[i].r_stats.max_seq_cache);
 
-        sprintf(buf,"%s----- Sender Stats ----- \n",buf);
-        char seqbuf[flows[i].s_stats.nbr_packets_sent * 10];
-        sprintf(seqbuf,"[");
+        idx += sprintf(buf+idx,"----- Sender Stats ----- \n");
+        idx += sprintf(buf+idx,"Packets sent : [");
         for(j = 0; j < flows[i].s_stats.nbr_packets_sent; j++) {
             if(j==flows[i].s_stats.waiting_ack) {
-                sprintf(seqbuf,"%s |",seqbuf);
+                idx += sprintf(buf + idx," |");
             }
-            sprintf(seqbuf,"%s %d",seqbuf, flows[i].s_stats.packets_sent[j]);
+            idx += sprintf(buf+idx," %d", flows[i].s_stats.packets_sent[j]);
         }
-        sprintf(buf,"%sPackets sent : %s] \n",buf,seqbuf);
-        sprintf(buf,"%sForward delay : %ld ms\n",buf, (long) flows[i].s_stats.forward_delay);
-        sprintf(buf,"%sLoss Rate : %f \n",buf,flows[i].s_stats.loss_rate);
+        idx += sprintf(buf+idx,"] \n");
+        idx += sprintf(buf+idx,"Forward delay : %ld ms\n", (long) flows[i].s_stats.forward_delay);
+        idx += sprintf(buf+idx,"Loss Rate : %f \n",flows[i].s_stats.loss_rate);
 
 
-        sprintf(buf,"%s---------------------------\n\n",buf);
+        idx += sprintf(buf+idx,"---------------------------\n\n");
     }
     WOLFSSL_MSG(buf);
 }
