@@ -1032,7 +1032,7 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
         OPTIMIZE_LATENCY,
         OPTIMIZE_BANDWIDTH
     } MPDTLS_SCHED_POLICY;
-    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY);
+    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY, uint);
 #endif
 
 #ifdef HAVE_NETX

@@ -505,7 +505,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
             NULL, 0, NI_NUMERICHOST);
         idx += sprintf(buf+idx,"IP dst : %s \n",namebuf);
-        idx += sprintf(buf+idx,"Support %d %% of the connection\n", flows[i].tokens);
+        idx += sprintf(buf+idx,"Support %d %% of the connection\n", (flows[i].tokens*100) / ssl->mpdtls_sched_tokens);
 
         idx += sprintf(buf+idx,"----- Receiver Stats ----- \n");
         // stats info
@@ -539,8 +539,9 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
 }
 #endif /* debug */
 
-int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL *ssl, MPDTLS_SCHED_POLICY policy) {
+int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL *ssl, MPDTLS_SCHED_POLICY policy, uint totalTokens) {
     ssl->mpdtls_sched_policy = policy;
+    ssl->mpdtls_sched_tokens = totalTokens;
     return SSL_SUCCESS;
 }
 #endif /* mpdtls */

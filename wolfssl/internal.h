@@ -1278,8 +1278,6 @@ typedef struct WOLFSSL_DTLS_CTX {
     #define MPDTLS_REFUSE_CONNECTION 0x80
     #define MPDTLS_BACKUP_CONNECTION 0x40
 
-    #define MPDTLS_SCHEDULER_GRANULARITY 100 //total tokens given by round
-
     typedef struct METADATA_PACKET {
         byte*       content;
         int         length;
@@ -2275,6 +2273,7 @@ struct WOLFSSL {
     struct timeval      mpdtls_last_cim;    /* Timestamp of last CIM */
     MPDTLS_SCHED_POLICY mpdtls_sched_policy; /* The policy to be used for scheduling */
     int                 SchedulerFlow;
+    uint                mpdtls_sched_tokens; /* total number of tokens to be split among the flows */
 #endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */

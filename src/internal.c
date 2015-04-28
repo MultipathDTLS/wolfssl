@@ -1735,6 +1735,7 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
     MpdtlsAddrsRestore(ssl, &(ssl->mpdtls_host));
     ssl->mpdtls_pref_flow = NULL;
     ssl->mpdtls_sched_policy = ROUND_ROBIN;
+    ssl->mpdtls_sched_tokens = 100; //default value
     timerclear(&ssl->mpdtls_last_cim);
 #endif /* WOLFSSL_MPDTLS */
 
@@ -2201,7 +2202,7 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
 {
     int i;
     MPDTLS_FLOW *flow;
-    int totalTokens = MPDTLS_SCHEDULER_GRANULARITY;
+    int totalTokens = ssl->mpdtls_sched_tokens;
     switch(ssl->mpdtls_sched_policy) {
         case OPTIMIZE_LATENCY: ;
             uint64_t maxLatency = 0;
