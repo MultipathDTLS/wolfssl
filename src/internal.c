@@ -2223,7 +2223,7 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
             }
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
-                flow->tokens = (uint) ((maxLatency - flow->s_stats.forward_delay) / (float) totaldiff) * totalTokens;
+                flow->tokens = (uint) ((float) ((maxLatency - flow->s_stats.forward_delay) * totalTokens) / (float) totaldiff);
             }
         break;
 
@@ -8100,10 +8100,9 @@ int SendHeartbeatMessage(WOLFSSL* ssl, HeartbeatMessageType type, word16 payload
     idx += payload_length;
 
     /* then random */
-    // ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, length - idx);
-    // if (ret != 0)
-    //     return ret;
-    XMEMSET(output + idx, 0x5c, length - idx);
+    ret = wc_RNG_GenerateBlock(ssl->rng, output + idx, length - idx);
+    if (ret != 0)
+        return ret;
 
     if (type != HEARTBEAT_RESPONSE) {
 #ifdef WOLFSSL_MPDTLS
