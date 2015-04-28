@@ -1727,16 +1727,16 @@ int InitSSL(WOLFSSL* ssl, WOLFSSL_CTX* ctx)
 #endif
 
 #ifdef WOLFSSL_MPDTLS
+    ssl->mpdtls_pref_flow = NULL;
+    ssl->mpdtls_sched_policy = ROUND_ROBIN;
+    ssl->mpdtls_sched_tokens = 100; //default value
+    timerclear(&ssl->mpdtls_last_cim);
     MpdtlsAddrsInit(&(ssl->mpdtls_remote));
     MpdtlsAddrsInit(&(ssl->mpdtls_host));
     MpdtlsSocksInit(ssl, &(ssl->mpdtls_pool));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows));
     MpdtlsFlowsInit(ssl, &(ssl->mpdtls_flows_waiting));
     MpdtlsAddrsRestore(ssl, &(ssl->mpdtls_host));
-    ssl->mpdtls_pref_flow = NULL;
-    ssl->mpdtls_sched_policy = ROUND_ROBIN;
-    ssl->mpdtls_sched_tokens = 100; //default value
-    timerclear(&ssl->mpdtls_last_cim);
 #endif /* WOLFSSL_MPDTLS */
 
     /* make sure server has DH parms, and add PSK if there, add NTRU too */
@@ -1796,6 +1796,11 @@ void MpdtlsAddrsRestore(WOLFSSL* ssl, MPDTLS_ADDRS** addr) {
         } else if (sa->sa_family == AF_INET6) {
             ((struct sockaddr_in6 *) sa)->sin6_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET6, sa, sizeof(struct sockaddr_in6));
         }
+    }
+    
+    if(src->nbrAddrs > 0) {
+        timerclear(&ssl->mpdtls_last_cim);
+        ssl->mpdtls_last_cim.tv_usec = 1;
     }
 }
 
