@@ -102,6 +102,8 @@
             #include <winsock2.h>
         #endif
         #include <windows.h>
+		#include <stdint.h>
+		typedef unsigned int uint;
     #endif
 #elif defined(THREADX)
     #ifndef SINGLE_THREADED
@@ -2467,7 +2469,7 @@ enum HandShakeType {
     /* MPDTLS change interface address */
     typedef struct MPDtlsAddress {
         byte                   address[16]; //ipv6 or ipv4 embedded inside ipv6
-        u_int16_t              portNumber;
+        uint16_t               portNumber;
     } MPDtlsAddress;
 
     #define FEEDBACK_SZ 28
@@ -2593,12 +2595,12 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
     WOLFSSL_LOCAL int InsertSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSock(MPDTLS_SOCKS*, int);
     WOLFSSL_LOCAL int DeleteSockbyIndex(MPDTLS_SOCKS*, int);
-    WOLFSSL_LOCAL int InsertAddr(MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
-    WOLFSSL_LOCAL int DeleteAddr(MPDTLS_ADDRS*, struct sockaddr*, socklen_t);
+    WOLFSSL_LOCAL int InsertAddr(MPDTLS_ADDRS*, struct sockaddr*, SOCKET_T);
+    WOLFSSL_LOCAL int DeleteAddr(MPDTLS_ADDRS*, struct sockaddr*, SOCKET_T);
     WOLFSSL_LOCAL int DeleteAddrbyIndex(MPDTLS_ADDRS*, int);
-    WOLFSSL_LOCAL int GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, socklen_t);
+	WOLFSSL_LOCAL int GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, SOCKET_T);
     WOLFSSL_LOCAL void FromSockToMPDTLSAddr(MPDtlsAddress*, struct sockaddr*);
-    WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, socklen_t*, MPDtlsAddress*);
+	WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, SOCKET_T*, MPDtlsAddress*);
     WOLFSSL_LOCAL int FromSockToPrint(struct sockaddr*, int, char*, int);
     WOLFSSL_LOCAL int mpdtlsRemoveInterface(WOLFSSL*, MPDTLS_FLOWS*, MPDTLS_FLOW*);
     WOLFSSL_LOCAL void mpdtlsSyncFlow(WOLFSSL*, MPDTLS_FLOWS*);
