@@ -2816,7 +2816,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }    
 
-    int InsertAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+    int InsertAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, SOCKET_T addrSz) {
         addrs->nbrAddrs++;
         addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
                                       sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
@@ -2830,7 +2830,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         return SSL_SUCCESS;
     }
     
-    int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+    int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, SOCKET_T addrSz) {
         int idx_addr, found = 0;
 
         for (idx_addr = 0; idx_addr < addrs->nbrAddrs; idx_addr++) {
@@ -2871,7 +2871,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }
 
-    int GetFreePortNumber(MPDTLS_SOCKS* pool, int family, const struct sockaddr *sa, socklen_t saSz)
+    int GetFreePortNumber(MPDTLS_SOCKS* pool, int family, const struct sockaddr *sa, SOCKET_T saSz)
     {
         WOLFSSL_ENTER("GetFreePortNumber");
 
@@ -8989,7 +8989,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
 
     int ret = SendPacket(ssl, (void*) output, sz, change_interface);
 
-	XFREE(output);
+	XFREE(output, NULL, DYNAMIC_TYPE_MPDTLS);
 
 	return ret;
 }

@@ -173,7 +173,7 @@
 #ifdef USE_WINDOWS_API
     typedef unsigned int SOCKET_T;
 #else
-    typedef int SOCKET_T;
+    typedef socklen_t SOCKET_T;
 #endif
 
 

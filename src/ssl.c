@@ -537,7 +537,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
     }
     WOLFSSL_MSG(buf);
 
-	XFREE(buf);
+	XFREE(buf, NULL, DYNAMIC_TYPE_MPDTLS);
 }
 #endif /* debug */
 
