@@ -339,6 +339,7 @@ int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
 {
     int error;
     struct addrinfo *res;
+    struct addrinfo *res_ori;
     struct addrinfo hints;
 
     /* getaddrinfo() case.  It can handle multiple addresses. */
@@ -350,10 +351,11 @@ int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
         WOLFSSL_MSG(gai_strerror(error));
         return PARSE_ADDR_E;
     } else {
+        res_ori = res;
         for (; res; res = res->ai_next) {
             InsertAddr(ctx->mpdtls_host, (struct sockaddr *) res->ai_addr, res->ai_addrlen);
         }
-        freeaddrinfo(res);
+        freeaddrinfo(res_ori);
     }
 
     return SSL_SUCCESS;
