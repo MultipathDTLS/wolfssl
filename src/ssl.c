@@ -222,8 +222,8 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
 
     #ifdef WOLFSSL_MPDTLS
         struct sockaddr_storage cl1, cl2;
-        socklen_t sz = sizeof(struct sockaddr_storage);
-        socklen_t sz2 = sizeof(struct sockaddr_storage);
+        SOCKET_T sz = sizeof(struct sockaddr_storage);
+        SOCKET_T sz2 = sizeof(struct sockaddr_storage);
 
 
         if (getpeername(fd, (struct sockaddr *) &cl1, &sz) == 0) {
@@ -493,7 +493,7 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
     int bufSz, i;
     uint j;
     bufSz = ssl->mpdtls_flows->nbrFlows * 10000;
-    char buf[bufSz];
+    char *buf = (char*) XMALLOC(bufSz, ssl->heap, DYNAMIC_TYPE_MPDTLS);
     buf[0] = '\0';
     int idx = 0;
 
@@ -538,6 +538,8 @@ void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
         idx += sprintf(buf+idx,"---------------------------\n\n");
     }
     WOLFSSL_MSG(buf);
+
+	XFREE(buf, NULL, DYNAMIC_TYPE_MPDTLS);
 }
 #endif /* debug */
 
@@ -562,17 +564,17 @@ int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
 #ifdef WOLFSSL_DTLS
 #ifdef WOLFSSL_MPDTLS
     struct sockaddr* host;
-    socklen_t hostSz = peerSz;
+    SOCKET_T hostSz = peerSz;
     //we consider the host to be the same family as the peer it tries to connect to
     if (((struct sockaddr *) peer)->sa_family==AF_INET) {
         struct sockaddr_in hostaddr;
-        bzero(&hostaddr, sizeof(struct sockaddr_in));
+        XMEMSET(&hostaddr, 0, sizeof(struct sockaddr_in));
         hostaddr.sin_family = AF_INET;
         host = (struct sockaddr*) &hostaddr;
         hostSz = sizeof(struct sockaddr_in);
     }else{
         struct sockaddr_in6 hostaddr;
-        bzero(&hostaddr, sizeof(struct sockaddr_in6));
+        XMEMSET(&hostaddr, 0, sizeof(struct sockaddr_in6));
         hostaddr.sin6_family = AF_INET6;
         host = (struct sockaddr*) &hostaddr;
         hostSz = sizeof(struct sockaddr_in6);

@@ -39,11 +39,15 @@
 #endif
 
 #ifdef WOLFSSL_MPDTLS
-    #include <netinet/in.h>
-    #include <arpa/inet.h>
-    #include <netdb.h>
-    #include <unistd.h>
-    #include <sys/time.h>
+	#ifndef _WIN32
+		#include <netinet/in.h>
+		#include <arpa/inet.h>
+		#include <netdb.h>
+		#include <unistd.h>
+		#include <sys/time.h>
+	#else
+		#include <WS2tcpip.h>
+	#endif
 #endif
 
 #ifdef WOLFSSL_PREFIX
@@ -1032,7 +1036,7 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
         OPTIMIZE_LATENCY,
         OPTIMIZE_BANDWIDTH
     } MPDTLS_SCHED_POLICY;
-    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY, uint);
+    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY, unsigned int);
 #endif
 
 #ifdef HAVE_NETX

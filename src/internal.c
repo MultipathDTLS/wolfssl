@@ -2816,7 +2816,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }    
 
-    int InsertAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+    int InsertAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, SOCKET_T addrSz) {
         addrs->nbrAddrs++;
         addrs->addrs = (struct sockaddr_storage*) XREALLOC(addrs->addrs,
                                       sizeof(struct sockaddr_storage) * addrs->nbrAddrs,
@@ -2830,7 +2830,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         return SSL_SUCCESS;
     }
     
-    int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, socklen_t addrSz) {
+    int DeleteAddr(MPDTLS_ADDRS* addrs, struct sockaddr *addr, SOCKET_T addrSz) {
         int idx_addr, found = 0;
 
         for (idx_addr = 0; idx_addr < addrs->nbrAddrs; idx_addr++) {
@@ -2871,7 +2871,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         }
     }
 
-    int GetFreePortNumber(MPDTLS_SOCKS* pool, int family, const struct sockaddr *sa, socklen_t saSz)
+    int GetFreePortNumber(MPDTLS_SOCKS* pool, int family, const struct sockaddr *sa, SOCKET_T saSz)
     {
         WOLFSSL_ENTER("GetFreePortNumber");
 
@@ -2915,7 +2915,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
     void FromSockToMPDTLSAddr(MPDtlsAddress *changeAddr, struct sockaddr *current_addr) {
 
         //we do not want to transmit part of the memory
-        bzero(changeAddr->address, sizeof(changeAddr->address));
+        XMEMSET(changeAddr->address, 0, sizeof(changeAddr->address));
         if (current_addr->sa_family == AF_INET) {
             //IPv4-Mapped IPv6 address -> see RFC4291
               c16toa(0xffff,changeAddr->address+10);
@@ -2947,7 +2947,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
             struct sockaddr_in *addr = (struct sockaddr_in *) res;
             addr->sin_family = AF_INET;
             addr->sin_port = ntohs(changeAddr->portNumber);
-            u_int32_t addrTemp;
+            uint32_t addrTemp;
             ato32((changeAddr->address+12), &addrTemp);
             addr->sin_addr.s_addr = htonl(addrTemp);
             *sz = sizeof(struct sockaddr_in);
@@ -8966,7 +8966,7 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
     size_t sz = sizeof(MPDtlsChangeInterfaceHeader)
               + addrs->nbrAddrs * sizeof(MPDtlsAddress);
 
-    byte output[sz];
+    byte *output = (byte*) XMALLOC(sz, ssl->heap, DYNAMIC_TYPE_MPDTLS);
 
     MPDtlsChangeInterfaceHeader *cih = (MPDtlsChangeInterfaceHeader*) output;
     cih->reply       = (byte) isReply;
@@ -8987,13 +8987,16 @@ int SendChangeInterface(WOLFSSL* ssl, const struct MPDTLS_ADDRS* addrs, int isRe
         gettimeofday(&ssl->mpdtls_last_cim, NULL);
     }
 
-    return SendPacket(ssl, (void*) output, sz, change_interface);
+    int ret = SendPacket(ssl, (void*) output, sz, change_interface);
+
+	XFREE(output, NULL, DYNAMIC_TYPE_MPDTLS);
+
+	return ret;
 }
 
 int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     WOLFSSL_ENTER("Send Feedback");
-    size_t sz = FEEDBACK_SZ;
-    byte output[sz];
+    byte output[FEEDBACK_SZ];
     int offset = 0;
     int ret;
 
@@ -9024,7 +9027,7 @@ int SendFeedback(WOLFSSL *ssl, MPDTLS_FLOW *flow) {
     flow->r_stats.threshold = FEEDBACK_RTX;
 
     ssl->mpdtls_pref_flow = flow;
-    ret = SendPacket(ssl, (void*) output, sz, feedback);
+    ret = SendPacket(ssl, (void*) output, FEEDBACK_SZ, feedback);
     WOLFSSL_LEAVE("Send Feedback",ret);
     return ret;
 }
