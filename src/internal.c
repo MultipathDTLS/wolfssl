@@ -413,7 +413,7 @@ int InitSSL_Ctx(WOLFSSL_CTX* ctx, WOLFSSL_METHOD* method)
             ctx->CBIOSend   = EmbedSendTo;
             ctx->CBIOCookie = EmbedGenerateCookie;
         #ifdef WOLFSSL_MPDTLS
-            ctx->CBIOSchedule = EmbedScheduler;
+            ctx->CBIOSchedule = EmbedSchedulerRandom;
         #endif
         }
     #endif
