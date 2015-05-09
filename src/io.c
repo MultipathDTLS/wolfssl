@@ -564,6 +564,29 @@ int EmbedScheduler(WOLFSSL* ssl, void* _flows)
     return flow->sock;
 }
 
+int EmbedSchedulerRandom(WOLFSSL* ssl, void* _flows) {
+    MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *) _flows;
+    // we generate a random number between 0 and the total number of tokens given
+    int r = rand() % (ssl->mpdtls_sched_tokens + 1);
+    int acc = 0; //this is our accumulator of tokens to compute range
+    MPDTLS_FLOW *flow = NULL;
+    int i;
+
+    for(i=0; i < flows->nbrFlows; i++) {
+        flow = flows->flows + i;
+        acc+= flow->tokens;
+        if(r < acc) //we are in the right range
+            return flow->sock;
+    }
+    if(flow == NULL) //no flow is present at all
+    {
+        return NO_FLOW_E;
+    }else {
+        //if none of the previous explored range has matched, then it must be the last flow
+        return flow->sock;
+    }
+}
+
 #endif /* WOLFSSL_MPDTLS */
 
 #ifdef HAVE_OCSP

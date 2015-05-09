@@ -1031,6 +1031,7 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
 
 #ifdef WOLFSSL_MPDTLS
     WOLFSSL_API int EmbedScheduler(WOLFSSL*, void*);
+    WOLFSSL_API int EmbedSchedulerRandom(WOLFSSL*, void*);
     typedef enum {
         ROUND_ROBIN,
         OPTIMIZE_LATENCY,
