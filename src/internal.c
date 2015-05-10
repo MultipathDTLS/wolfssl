@@ -1774,7 +1774,6 @@ void MpdtlsAddrsInit(MPDTLS_ADDRS** addr) {
     *addr = (MPDTLS_ADDRS*) XMALLOC(sizeof(MPDTLS_ADDRS), 
                                     NULL, DYNAMIC_TYPE_MPDTLS);
     (*addr)->nbrAddrs = 0;
-    (*addr)->nextRound = 0;
     (*addr)->addrs = NULL;
 }
 
@@ -1817,8 +1816,6 @@ void MpdtlsSocksInit(WOLFSSL* ssl, MPDTLS_SOCKS** socks) {
     *socks = (MPDTLS_SOCKS*) XMALLOC(sizeof(MPDTLS_SOCKS), 
                                     ssl->heap, DYNAMIC_TYPE_MPDTLS);
     (*socks)->nbrSocks = 0;
-    (*socks)->nextReadRound = 0;
-    (*socks)->nextWriteRound = 0;
     (*socks)->socks = NULL;
 }
 

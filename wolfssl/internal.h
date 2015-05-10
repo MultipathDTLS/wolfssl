@@ -1246,7 +1246,6 @@ typedef struct WOLFSSL_DTLS_CTX {
     /* MPDTLS address manager */
     typedef struct MPDTLS_ADDRS {
         int                        nbrAddrs;          /* Number of available addresses */
-        int                       nextRound;          /* Contains the number of the next address (round robin schedule) */
         struct sockaddr_storage*      addrs;          /* Contains all the available addresses for MPDTLS (both IPV4 or IPV6) */
     } MPDTLS_ADDRS;
 
@@ -1257,8 +1256,6 @@ typedef struct WOLFSSL_DTLS_CTX {
     typedef struct MPDTLS_SOCKS {
         int*            socks;              /* Contains all the available sockets for MPDTLS */
         int             nbrSocks;           /* Number of available sockets */
-        int             nextReadRound;      /* Contains the number of the next sockets for read (round robin schedule) */
-        int             nextWriteRound;      /* Contains the number of the next sockets for write (round robin schedule) */
     } MPDTLS_SOCKS;
     
     
