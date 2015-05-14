@@ -567,7 +567,7 @@ int EmbedScheduler(WOLFSSL* ssl, void* _flows)
 int EmbedSchedulerRandom(WOLFSSL* ssl, void* _flows) {
     MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *) _flows;
     // we generate a random number between 0 and the total number of tokens given
-    int r = rand() % (ssl->mpdtls_sched_tokens + 1);
+    int r = rand() % ssl->mpdtls_sched_tokens;
     int acc = 0; //this is our accumulator of tokens to compute range
     MPDTLS_FLOW *flow = NULL;
     int i;

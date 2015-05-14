@@ -2208,11 +2208,12 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
     switch(ssl->mpdtls_sched_policy) {
         case OPTIMIZE_LATENCY: ;
             uint64_t maxLatency = 0;
+            int basis = 5; //we consider a minimum of 5ms per flow
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
                 maxLatency = max(flow->s_stats.forward_delay,maxLatency);
             }
-            uint64_t totaldiff = 0;
+            uint64_t totaldiff = basis*flows->nbrFlows; //we consider a "basis" of 5ms per flow to avoid division by zero and delesting completely one flow
             //we remove the clock desynchronization term by taking the difference between two measures
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
@@ -2220,7 +2221,7 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
             }
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
-                flow->tokens = (uint) ((float) ((maxLatency - flow->s_stats.forward_delay) * totalTokens) / (float) totaldiff);
+                flow->tokens = (uint) ((float) ((maxLatency - flow->s_stats.forward_delay + basis) * totalTokens) / (float) totaldiff);
             }
         break;
 
@@ -7225,6 +7226,8 @@ static int DoWantConnectAck(WOLFSSL* ssl, byte* input, word32* inOutIdx) {
             int ss_sz = sizeof(struct sockaddr_storage);
             mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cur_flow->host, ss_sz,
                              (struct sockaddr*) &cur_flow->remote, ss_sz, 0, NULL);
+            //we run the scheduler to take this new flow into considerations
+            applySchedulingPolicy(ssl, ssl->mpdtls_flows);
         } else {
             //we must delete the flow, no connection is possible
             WOLFSSL_MSG("We must delete the flow");
@@ -8313,6 +8316,8 @@ void checkForWaitingFlow(WOLFSSL *ssl) {
                              (struct sockaddr*) &flow->remote, ss_sz, -1, &new_flow);
         mpdtlsRemoveFlow(ssl, ssl->mpdtls_flows_waiting, &flow->host, &flow->remote, &fd);
         new_flow->sock = fd;
+        //we run the scheduling policy
+        applySchedulingPolicy(ssl, ssl->mpdtls_flows);
     }
 }
 
