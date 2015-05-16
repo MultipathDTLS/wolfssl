@@ -2232,9 +2232,11 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
                 //if we have too many packets waiting for ack, this means the LR is higher than reported
-                realLR[i] = (float ) (flow->s_stats.nbr_packets_sent / (2 * FEEDBACK_TX)) * 0.05;
+                realLR[i] = (flow->s_stats.nbr_packets_sent / (2 * FEEDBACK_TX)) * 0.05;
                 realLR[i] += flow->s_stats.loss_rate;
-                maxLoss = max(realLR[i],maxLoss);
+                if(realLR[i] > maxLoss) {
+                    maxLoss = realLR[i];
+                }
             }
             float total = base*flows->nbrFlows;
             //we consider the relative difference between LR
