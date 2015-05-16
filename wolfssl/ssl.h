@@ -1035,7 +1035,7 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
     typedef enum {
         ROUND_ROBIN,
         OPTIMIZE_LATENCY,
-        OPTIMIZE_BANDWIDTH
+        OPTIMIZE_LOSS
     } MPDTLS_SCHED_POLICY;
     WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY, unsigned int);
 #endif

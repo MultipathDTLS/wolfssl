@@ -2205,6 +2205,7 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
     int i;
     MPDTLS_FLOW *flow;
     int totalTokens = ssl->mpdtls_sched_tokens;
+    float realLR[flows->nbrFlows]; 
     switch(ssl->mpdtls_sched_policy) {
         case OPTIMIZE_LATENCY: ;
             uint64_t maxLatency = 0;
@@ -2225,8 +2226,28 @@ void applySchedulingPolicy(WOLFSSL *ssl, MPDTLS_FLOWS *flows)
             }
         break;
 
-        case OPTIMIZE_BANDWIDTH:
-                //TO DO implement other policies
+        case OPTIMIZE_LOSS: ;
+            float base = 0.01; //we consider a minimum of 1% loss on every flow
+            float maxLoss = 0.0;
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                //if we have too many packets waiting for ack, this means the LR is higher than reported
+                realLR[i] = (float ) (flow->s_stats.nbr_packets_sent / (2 * FEEDBACK_TX)) * 0.05;
+                realLR[i] += flow->s_stats.loss_rate;
+                maxLoss = max(realLR[i],maxLoss);
+            }
+            float total = base*flows->nbrFlows;
+            //we consider the relative difference between LR
+            for(i = 0; i < flows->nbrFlows; i++) {
+                total += maxLoss - realLR[i];
+            }
+            //we give tokens accordingly
+            for(i = 0; i < flows->nbrFlows; i++) {
+                flow = &flows->flows[i];
+                flow->tokens = (uint) (((maxLoss - realLR[i] + base) * totalTokens) / total);
+            }
+        break;
+                
         case ROUND_ROBIN :
             for(i = 0; i < flows->nbrFlows; i++) {
                 flow = &flows->flows[i];
