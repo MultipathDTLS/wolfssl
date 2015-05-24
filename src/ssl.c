@@ -224,6 +224,33 @@ int wolfSSL_set_fd(WOLFSSL* ssl, int fd)
         }
     #endif
 
+    #ifdef WOLFSSL_MPDTLS
+        struct sockaddr_storage cl1, cl2;
+        SOCKET_T sz = sizeof(struct sockaddr_storage);
+        SOCKET_T sz2 = sizeof(struct sockaddr_storage);
+
+
+        if (getpeername(fd, (struct sockaddr *) &cl1, &sz) == 0) {
+            InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) &cl1, sz);
+        }
+        
+        if (getsockname(fd, (struct sockaddr *) &cl2, &sz2) == 0) {
+            //we discard non connected socket
+            int valid = 1;
+            if(cl2.ss_family == AF_INET){
+                valid = ((struct sockaddr_in*) &cl2)->sin_port;
+            }else if(cl2.ss_family == AF_INET6){
+                valid = ((struct sockaddr_in6*) &cl2)->sin6_port;
+            }
+            if(valid) {
+                InsertAddr(ssl->mpdtls_host, (struct sockaddr *) &cl2, sz2);
+                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, (struct sockaddr*) &cl2, sz2, (struct sockaddr*) &cl1, sz, fd, NULL);
+                applySchedulingPolicy(ssl, ssl->mpdtls_flows);
+            }
+        }
+
+    #endif
+
     WOLFSSL_LEAVE("SSL_set_fd", SSL_SUCCESS);
     return SSL_SUCCESS;
 }
@@ -297,6 +324,236 @@ int wolfSSL_dtls(WOLFSSL* ssl)
     return ssl->options.dtls;
 }
 
+int wolfSSL_mpdtls(WOLFSSL* ssl)
+{
+    return ssl->options.mpdtls;
+}
+
+
+#ifdef WOLFSSL_MPDTLS
+void wolfSSL_MetaData_ON(WOLFSSL *ssl) {
+    ssl->options.metadatapackets = 1;
+}
+
+void wolfSSL_MetaData_OFF(WOLFSSL *ssl) {
+    ssl->options.metadatapackets = 0;
+}
+
+int wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char *name)
+{
+    int error;
+    struct addrinfo *res;
+    struct addrinfo *res_ori;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        res_ori = res;
+        for (; res; res = res->ai_next) {
+            InsertAddr(ctx->mpdtls_host, (struct sockaddr *) res->ai_addr, res->ai_addrlen);
+        }
+        freeaddrinfo(res_ori);
+    }
+
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char *name)
+{
+    int error, n;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        for (n = 0; res; res = res->ai_next) {
+            // Get a free port to bind to
+            struct sockaddr *addr = (struct sockaddr *) res->ai_addr;
+            if (addr->sa_family == AF_INET) {
+                ((struct sockaddr_in *) addr)->sin_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET, res->ai_addr, res->ai_addrlen);
+            } else if (addr->sa_family == AF_INET6) {
+                ((struct sockaddr_in6 *) addr)->sin6_port = GetFreePortNumber(ssl->mpdtls_pool, AF_INET6, res->ai_addr, res->ai_addrlen);
+            }
+
+            if (InsertAddr(ssl->mpdtls_host, addr, res->ai_addrlen) == SSL_SUCCESS) {
+                n++; // Count the number of addresses we add
+            }
+        }
+        freeaddrinfo(res);
+    }
+
+    if (n > 0) {
+        //it's trigger by a change in the interfaces, we expect a reply
+        SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+        //mpdtlsSyncSock(ssl); do sth smarter
+    }
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_ask_connect(WOLFSSL *ssl, char **outbuf, size_t *sz) {
+    MPDTLS_ADDRS *src = ssl->mpdtls_host, *dst = ssl->mpdtls_remote;
+
+    size_t MaxSize = (src->nbrAddrs + dst->nbrAddrs) * (50) + 50;
+    if (sz == NULL || *sz < MaxSize) {
+        *outbuf = (char *) XREALLOC(*outbuf, MaxSize, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    }
+
+    int i, offset = 0;
+    offset += sprintf(*outbuf + offset, "*** Host addresses ***");
+
+    for (i = 0; i < src->nbrAddrs; i++) {
+        offset += sprintf(*outbuf + offset, "\n%d) ", i);
+        offset += FromSockToPrint((struct sockaddr *) &src->addrs[i],
+                                   sizeof(struct sockaddr_storage),
+                                   *outbuf + offset, MaxSize - offset);
+    }
+
+    offset += sprintf(*outbuf + offset, "\n*** Server addresses ***");
+    for (i = 0; i < dst->nbrAddrs; i++) {
+        offset += sprintf(*outbuf + offset, "\n%d) ", i);
+        offset += FromSockToPrint((struct sockaddr *) &dst->addrs[i],
+                                   sizeof(struct sockaddr_storage),
+                                   *outbuf + offset, MaxSize - offset);
+    }
+
+    (*outbuf)[offset] = '\0';
+    if (sz != NULL)
+        *sz = offset;
+
+    return SSL_SUCCESS;
+}
+
+int wolfSSL_mpdtls_connect_addr(WOLFSSL* ssl, int src_idx, int dst_idx)
+{
+    MPDTLS_ADDRS *host = ssl->mpdtls_host, *remote = ssl->mpdtls_remote;
+
+    if (src_idx < 0 || src_idx >= host->nbrAddrs || dst_idx < 0 || dst_idx >= remote->nbrAddrs) {
+        WOLFSSL_MSG("Index out of range");
+        return SSL_FAILURE;
+    }
+
+    if(mpdtlsIsFlowPresent(ssl->mpdtls_flows, (struct sockaddr *) &host->addrs[src_idx], (struct sockaddr *) &remote->addrs[dst_idx])
+        + mpdtlsIsFlowPresent(ssl->mpdtls_flows_waiting, (struct sockaddr *) &host->addrs[src_idx], (struct sockaddr *) &remote->addrs[dst_idx]) != -2){
+        WOLFSSL_MSG("Such a flow is already present");
+        return SSL_FAILURE;
+    }
+
+    if (SendWantConnect(ssl, 0x0, &host->addrs[src_idx], &remote->addrs[dst_idx], NULL) > 0) {
+        return SSL_SUCCESS;
+    }
+    return SSL_FAILURE;
+}
+
+int wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *name)
+{
+    int error, n = 0;
+    struct addrinfo *res;
+    struct addrinfo hints;
+
+    /* getaddrinfo() case.  It can handle multiple addresses. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = PF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    error = getaddrinfo(name, NULL, &hints, &res);
+    if (error) {
+        WOLFSSL_MSG(gai_strerror(error));
+        return PARSE_ADDR_E;
+    } else {
+        while (res) {
+            if (DeleteAddr(ssl->mpdtls_host, res->ai_addr, res->ai_addrlen) == 0) {
+                n++;
+            }
+
+            /* go to next address */
+            res = res->ai_next;
+        }
+    }
+
+    if (n > 0) {
+        //it's trigger by a change in the interfaces, we expect a reply
+        SendChangeInterface(ssl, ssl->mpdtls_host, 1);
+        //mpdtlsSyncSock(ssl); do sth smarter
+    }
+
+    return SSL_SUCCESS;
+}
+#ifdef DEBUG
+void wolfSSL_mpdtls_stats(WOLFSSL* ssl)
+{
+    int bufSz, i;
+    uint j;
+    bufSz = ssl->mpdtls_flows->nbrFlows * 10000;
+    char *buf = (char*) XMALLOC(bufSz, ssl->heap, DYNAMIC_TYPE_MPDTLS);
+    buf[0] = '\0';
+    int idx = 0;
+
+    MPDTLS_FLOW *flows = ssl->mpdtls_flows->flows;
+    for(i=0; i< ssl->mpdtls_flows->nbrFlows; i++) {
+        char namebuf[50];
+        idx += sprintf(buf+idx,"---- Stats for Flow N° %d ---- \n", i);
+        getnameinfo((struct sockaddr *) &(flows[i].host),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, NI_NUMERICHOST);
+        idx += sprintf(buf+idx,"IP src : %s \n",namebuf);
+        getnameinfo((struct sockaddr *) &(flows[i].remote),  sizeof(struct sockaddr_storage), namebuf, sizeof(namebuf),
+            NULL, 0, NI_NUMERICHOST);
+        idx += sprintf(buf+idx,"IP dst : %s \n",namebuf);
+        idx += sprintf(buf+idx,"Support %d %% of the connection\n", (flows[i].tokens*100) / ssl->mpdtls_sched_tokens);
+
+        idx += sprintf(buf+idx,"----- Receiver Stats ----- \n");
+        // stats info
+        idx += sprintf(buf+idx,"Packets received : %ld \n",(long) flows[i].r_stats.nbr_packets_received);
+        idx += sprintf(buf+idx,"Min_Seq received : %d \n",flows[i].r_stats.min_seq);
+        idx += sprintf(buf+idx,"Max_Seq received : %d \n",flows[i].r_stats.max_seq);
+        idx += sprintf(buf+idx,"Backward delay : %ld ms\n",(long) flows[i].r_stats.backward_delay);
+
+        idx += sprintf(buf+idx,"----- Receiver Cache ----- \n");
+        // stats info
+        idx += sprintf(buf+idx,"Packets received : %ld \n",(long) flows[i].r_stats.nbr_packets_received_cache);
+        idx += sprintf(buf+idx,"Min_Seq received : %d \n",flows[i].r_stats.min_seq_cache);
+        idx += sprintf(buf+idx,"Max_Seq received : %d \n",flows[i].r_stats.max_seq_cache);
+
+        idx += sprintf(buf+idx,"----- Sender Stats ----- \n");
+        idx += sprintf(buf+idx,"Packets sent : [");
+        for(j = 0; j < flows[i].s_stats.nbr_packets_sent; j++) {
+            if(j==flows[i].s_stats.waiting_ack) {
+                idx += sprintf(buf + idx," |");
+            }
+            idx += sprintf(buf+idx," %d", flows[i].s_stats.packets_sent[j]);
+        }
+        idx += sprintf(buf+idx,"] \n");
+        idx += sprintf(buf+idx,"Forward delay : %ld ms\n", (long) flows[i].s_stats.forward_delay);
+        idx += sprintf(buf+idx,"Loss Rate : %f \n",flows[i].s_stats.loss_rate);
+
+
+        idx += sprintf(buf+idx,"---------------------------\n\n");
+    }
+    WOLFSSL_MSG(buf);
+
+	XFREE(buf, NULL, DYNAMIC_TYPE_MPDTLS);
+}
+#endif /* debug */
+
+int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL *ssl, MPDTLS_SCHED_POLICY policy, uint totalTokens) {
+    ssl->mpdtls_sched_policy = policy;
+    ssl->mpdtls_sched_tokens = totalTokens;
+    return SSL_SUCCESS;
+}
+#endif /* mpdtls */
+
 
 #ifndef WOLFSSL_LEANPSK
 void wolfSSL_set_using_nonblock(WOLFSSL* ssl, int nonblock)
@@ -309,6 +566,46 @@ void wolfSSL_set_using_nonblock(WOLFSSL* ssl, int nonblock)
 int wolfSSL_dtls_set_peer(WOLFSSL* ssl, void* peer, unsigned int peerSz)
 {
 #ifdef WOLFSSL_DTLS
+#ifdef WOLFSSL_MPDTLS
+    struct sockaddr* host;
+    SOCKET_T hostSz = peerSz;
+    //we consider the host to be the same family as the peer it tries to connect to
+    if (((struct sockaddr *) peer)->sa_family==AF_INET) {
+        struct sockaddr_in hostaddr;
+        XMEMSET(&hostaddr, 0, sizeof(struct sockaddr_in));
+        hostaddr.sin_family = AF_INET;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in);
+    }else{
+        struct sockaddr_in6 hostaddr;
+        XMEMSET(&hostaddr, 0, sizeof(struct sockaddr_in6));
+        hostaddr.sin6_family = AF_INET6;
+        host = (struct sockaddr*) &hostaddr;
+        hostSz = sizeof(struct sockaddr_in6);
+    }
+    
+    int optval = 1;
+    setsockopt(wolfSSL_get_fd(ssl), SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    if (bind(wolfSSL_get_fd(ssl), host, hostSz) == 0) {
+        if (connect(wolfSSL_get_fd(ssl), (struct sockaddr *)peer, peerSz) == 0) {
+            
+            if (getsockname(wolfSSL_get_fd(ssl), host, &hostSz) == 0) {
+                InsertAddr(ssl->mpdtls_host, host, hostSz);
+                //we must add a flow here as well
+                mpdtlsAddNewFlow(ssl, ssl->mpdtls_flows, host, hostSz, peer, peerSz, wolfSSL_get_fd(ssl), NULL);
+                applySchedulingPolicy(ssl, ssl->mpdtls_flows);
+            }
+        } else {
+            WOLFSSL_MSG("Error on connect in set peer");
+        }
+    } else {
+        WOLFSSL_MSG("Error on bind in set peer");
+    }
+
+    InsertAddr(ssl->mpdtls_remote, (struct sockaddr *) peer, peerSz);
+
+#endif /* WOLFSSL_MPDTLS */
     void* sa = (void*)XMALLOC(peerSz, ssl->heap, DYNAMIC_TYPE_SOCKADDR);
     if (sa != NULL) {
         if (ssl->buffers.dtlsCtx.peer.sa != NULL)
@@ -524,6 +821,10 @@ int wolfSSL_CTX_SetTmpDH(WOLFSSL_CTX* ctx, const unsigned char* p, int pSz,
 int wolfSSL_write(WOLFSSL* ssl, const void* data, int sz)
 {
     int ret;
+    if (LockMutex(&ssl->access_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
+    }
 
     WOLFSSL_ENTER("SSL_write()");
 
@@ -538,6 +839,7 @@ int wolfSSL_write(WOLFSSL* ssl, const void* data, int sz)
 
     WOLFSSL_LEAVE("SSL_write()", ret);
 
+    UnLockMutex(&ssl->access_mutex);
     if (ret < 0)
         return SSL_FATAL_ERROR;
     else
@@ -588,9 +890,16 @@ int wolfSSL_peek(WOLFSSL* ssl, void* data, int sz)
 
 int wolfSSL_read(WOLFSSL* ssl, void* data, int sz)
 {
+    if (LockMutex(&ssl->access_mutex) != 0) {
+        WOLFSSL_MSG("Bad Lock Mutex count");
+        return BAD_MUTEX_E;
+    }
     WOLFSSL_ENTER("wolfSSL_read()");
-
-    return wolfSSL_read_internal(ssl, data, sz, FALSE);
+    int ret;
+    ret = wolfSSL_read_internal(ssl, data, sz, FALSE);
+    WOLFSSL_LEAVE("wolfssl_read()",ret);
+    UnLockMutex(&ssl->access_mutex);
+    return ret;
 }
 
 
@@ -955,6 +1264,41 @@ WOLFSSL_API int wolfSSL_set_SessionTicket_cb(WOLFSSL* ssl,
     return SSL_SUCCESS;
 }
 #endif
+
+#ifdef HAVE_HEARTBEAT
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseHeartbeat(WOLFSSL* ssl, byte mode)
+{
+    if (ssl == NULL)
+        return BAD_FUNC_ARG;
+
+    return TLSX_UseHeartbeat(&ssl->extensions, mode);
+}
+
+#endif
+#endif /* HAVE_HEARTBEAT */
+
+#ifdef WOLFSSL_MPDTLS
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseMultiPathDTLS(WOLFSSL* ssl, byte enabled)
+{
+    if (ssl == NULL || (enabled != 0x00 && enabled != 0x01))
+        return BAD_FUNC_ARG;
+
+#ifdef HAVE_HEARTBEAT
+    if (enabled == 0x01) {
+        int ret = TLSX_UseHeartbeat(&ssl->extensions, PEER_ALLOWED_TO_SEND);
+        if(ret != SSL_SUCCESS)
+            return ret;
+    }
+#endif
+
+    return TLSX_UseMultiPathDTLS(&ssl->extensions, enabled);
+}
+#endif
+#endif /* WOLFSSL_MPDTLS */
 
 #ifndef WOLFSSL_LEANPSK
 
@@ -5468,6 +5812,9 @@ int wolfSSL_dtls_got_timeout(WOLFSSL* ssl)
         #ifdef WOLFSSL_DTLS
             if (ssl->version.major == DTLS_MAJOR) {
                 ssl->options.dtls   = 1;
+        #ifdef WOLFSSL_MPDTLS
+                ssl->options.mpdtls = 1; /* Servers compiled with MPDTLS always support it */
+        #endif
                 ssl->options.tls    = 1;
                 ssl->options.tls1_1 = 1;
 
@@ -7054,7 +7401,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
     }
 
 
-    WOLFSSL_BIO* wolfSSL_BIO_new_socket(int sfd, int closeF)
+    WOLFSSL_BIO* wolfSSL_BIO_new_socket(int sfd, int closeF, void *ptr)
     {
         WOLFSSL_BIO* bio = (WOLFSSL_BIO*) XMALLOC(sizeof(WOLFSSL_BIO), 0,
                                                 DYNAMIC_TYPE_OPENSSL);
@@ -7069,6 +7416,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
             bio->prev  = 0;
             bio->next  = 0;
             bio->mem   = NULL;
+            bio->ptr   = ptr;
             bio->memLen = 0;
         }
         return bio;
@@ -7107,6 +7455,7 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
             bio->eof    = 0;
             bio->ssl    = NULL;
             bio->mem    = NULL;
+            bio->ptr    = NULL;
             bio->memLen = 0;
             bio->fd     = 0;
             bio->prev   = NULL;
@@ -7124,6 +7473,11 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
         *p = bio->mem;
 
         return bio->memLen;
+    }
+
+    void* wolfSSL_BIO_get_rbio_ptr(WOLFSSL* ssl)
+    {
+        return ssl->biord->ptr;
     }
 
 

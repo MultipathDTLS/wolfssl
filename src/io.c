@@ -264,7 +264,7 @@ int EmbedReceive(WOLFSSL *ssl, char *buf, int sz, void *ctx)
     if (recvd < 0) {
         err = LastError();
         WOLFSSL_MSG("Embed Receive error");
-
+     
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             if (!wolfSSL_dtls(ssl) || wolfSSL_get_using_nonblock(ssl)) {
                 WOLFSSL_MSG("    Would block");
@@ -318,7 +318,7 @@ int EmbedSend(WOLFSSL* ssl, char *buf, int sz, void *ctx)
 
     if (sent < 0) {
         err = LastError();
-        WOLFSSL_MSG("Embed Send error");
+        WOLFSSL_MSG("Embed Send error"); 
 
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             WOLFSSL_MSG("    Would Block");
@@ -398,6 +398,16 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
         err = LastError();
         WOLFSSL_MSG("Embed Receive From error");
 
+#ifdef WOLFSSL_MPDTLS
+            if(ssl->options.mpdtls && (err != SOCKET_EWOULDBLOCK && err != SOCKET_EAGAIN && !wolfSSL_get_using_nonblock(ssl))) {
+                //error on socket, we delete the flow
+                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
+                if(fail_flow!=NULL) {
+                    mpdtlsRemoveInterface(ssl, ssl->mpdtls_flows, fail_flow);
+                }
+            }
+#endif   
+
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             if (wolfSSL_get_using_nonblock(ssl)) {
                 WOLFSSL_MSG("    Would block");
@@ -433,7 +443,7 @@ int EmbedReceiveFrom(WOLFSSL *ssl, char *buf, int sz, void *ctx)
             return WOLFSSL_CBIO_ERR_WANT_READ;
         }
     }
-
+    WOLFSSL_LEAVE("Embed receive from",recvd);
     return recvd;
 }
 
@@ -457,6 +467,17 @@ int EmbedSendTo(WOLFSSL* ssl, char *buf, int sz, void *ctx)
     if (sent < 0) {
         err = LastError();
         WOLFSSL_MSG("Embed Send To error");
+
+#ifdef WOLFSSL_MPDTLS
+            if(ssl->options.mpdtls && err != SOCKET_EWOULDBLOCK && err != SOCKET_EAGAIN) {
+                //error on socket, we delete the flow
+                MPDTLS_FLOW *fail_flow = getFlowFromSocket(ssl->mpdtls_flows,sd);
+                if(fail_flow!=NULL) {
+                    mpdtlsRemoveInterface(ssl, ssl->mpdtls_flows, fail_flow);
+                }
+                ssl->mpdtls_pref_flow = NULL;
+            }
+#endif  
 
         if (err == SOCKET_EWOULDBLOCK || err == SOCKET_EAGAIN) {
             WOLFSSL_MSG("    Would Block");
@@ -515,6 +536,58 @@ int EmbedGenerateCookie(WOLFSSL* ssl, byte *buf, int sz, void *ctx)
 }
 
 #endif /* WOLFSSL_DTLS */
+
+#ifdef WOLFSSL_MPDTLS
+/**
+*   Scheduler will determine which flow must be used for the next sent
+*   Use scheduling policy
+*/
+int EmbedScheduler(WOLFSSL* ssl, void* _flows)
+{
+    (void) ssl;
+    MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *)_flows;
+    if(flows->nbrFlows == 0) {
+        return NO_FLOW_E;
+    }
+
+    if(flows->cur_flow_idx >= flows->nbrFlows)
+        flows->cur_flow_idx = 0;
+
+    MPDTLS_FLOW *flow = &flows->flows[flows->cur_flow_idx];
+    if(flows->token_counter < flow->tokens) { //if the flow has still some tokens
+        flows->token_counter++;
+    } else {
+        flows->cur_flow_idx++;
+        flows->token_counter = 0;
+    }
+
+    return flow->sock;
+}
+
+int EmbedSchedulerRandom(WOLFSSL* ssl, void* _flows) {
+    MPDTLS_FLOWS *flows = (MPDTLS_FLOWS *) _flows;
+    // we generate a random number between 0 and the total number of tokens given
+    int r = rand() % ssl->mpdtls_sched_tokens;
+    int acc = 0; //this is our accumulator of tokens to compute range
+    MPDTLS_FLOW *flow = NULL;
+    int i;
+
+    for(i=0; i < flows->nbrFlows; i++) {
+        flow = flows->flows + i;
+        acc+= flow->tokens;
+        if(r < acc) //we are in the right range
+            return flow->sock;
+    }
+    if(flow == NULL) //no flow is present at all
+    {
+        return NO_FLOW_E;
+    }else {
+        //if none of the previous explored range has matched, then it must be the last flow
+        return flow->sock;
+    }
+}
+
+#endif /* WOLFSSL_MPDTLS */
 
 #ifdef HAVE_OCSP
 

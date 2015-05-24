@@ -102,6 +102,8 @@
             #include <winsock2.h>
         #endif
         #include <windows.h>
+		#include <stdint.h>
+		typedef unsigned int uint;
     #endif
 #elif defined(THREADX)
     #ifndef SINGLE_THREADED
@@ -171,7 +173,7 @@
 #ifdef USE_WINDOWS_API
     typedef unsigned int SOCKET_T;
 #else
-    typedef int SOCKET_T;
+    typedef socklen_t SOCKET_T;
 #endif
 
 
@@ -793,6 +795,10 @@ enum Misc {
     HELLO_EXT_LEN         = 6,  /* length of the lazy hello extensions */
     HELLO_EXT_SIGALGO_SZ  = 2,  /* length of signature algo extension  */
     HELLO_EXT_SIGALGO_MAX = 32, /* number of items in the signature algo list */
+    HELLO_EXT_MP_DTLS_LEN = 1,  /* Length of the field to be carried in the extension */
+    HELLO_EXT_MP_DTLS_SZ  = 5,  /* total length of the MPDTLS hello extension */
+
+    HB_MSG_HEADER_SZ      = 3,  /* Size of the Heartbeat Message header */
 
     DTLS_HANDSHAKE_HEADER_SZ = 12, /* normal + seq(2) + offset(3) + length(3) */
     DTLS_RECORD_HEADER_SZ    = 13, /* normal + epoch(2) + seq_num(6) */
@@ -960,6 +966,11 @@ enum states {
 };
 
 
+typedef enum MessageState {
+    STATE_NULL          = 0,
+    IN_FLIGHT           = 1
+} MessageState;
+
 #if defined(__GNUC__)
     #define WOLFSSL_PACK __attribute__ ((packed))
 #else
@@ -1005,6 +1016,7 @@ struct WOLFSSL_BIO {
     byte        eof;           /* eof flag */
     WOLFSSL*     ssl;           /* possible associated ssl */
     byte*       mem;           /* memory buffer */
+    void*       ptr;           /* custom ptr */
     int         memLen;        /* memory buffer length */
     int         fd;            /* possible file descriptor */
     WOLFSSL_BIO* prev;          /* previous in chain */
@@ -1311,6 +1323,116 @@ typedef struct WOLFSSL_DTLS_CTX {
 
 #endif /* WOLFSSL_DTLS */
 
+#ifdef WOLFSSL_MPDTLS
+    /* MPDTLS address manager */
+    typedef struct MPDTLS_ADDRS {
+        int                        nbrAddrs;          /* Number of available addresses */
+        struct sockaddr_storage*      addrs;          /* Contains all the available addresses for MPDTLS (both IPV4 or IPV6) */
+    } MPDTLS_ADDRS;
+
+    void MpdtlsAddrsInit(MPDTLS_ADDRS**);
+    void MpdtlsAddrsRestore(WOLFSSL*, MPDTLS_ADDRS**);
+    void MpdtlsAddrsFree(MPDTLS_ADDRS**);
+
+    typedef struct MPDTLS_SOCKS {
+        int*            socks;              /* Contains all the available sockets for MPDTLS */
+        int             nbrSocks;           /* Number of available sockets */
+    } MPDTLS_SOCKS;
+    
+    
+    void MpdtlsSocksInit(WOLFSSL*, MPDTLS_SOCKS**);
+    void MpdtlsSocksFree(WOLFSSL*, MPDTLS_SOCKS**);
+
+    #define FEEDBACK_TX  60
+    #define FEEDBACK_RTX 40
+    #define FEEDBACK_CAPACITY 120
+
+    #define EWMA_ALPHA 0.875
+
+    #define HEARTBEAT_TX 5
+    #define HEARTBEAT_MAX_THR (HEARTBEAT_TX)*4
+    #define CIM_RTX 10
+    #define FLOW_RETRY 300
+
+    //options for wantConnect
+    #define MPDTLS_REFUSE_CONNECTION 0x80
+    #define MPDTLS_BACKUP_CONNECTION 0x40
+
+    typedef struct METADATA_PACKET {
+        byte*       content;
+        int         length;
+        int         flow_id;
+    } METADATA_PACKET;
+
+    typedef struct MPDTLS_SENDER_STATS {
+    	uint*		packets_sent;       //sequence number of packets sent
+    	uint  		capacity;           //capacity of the array (mimic arraylist)
+    	uint 		nbr_packets_sent;   //number of stored packets inside packets_sent
+        uint        waiting_ack;        //first packet which has not been transmitted
+    	uint64_t    forward_delay;      //average forward delay (us)
+    	float 		loss_rate;          //loss rate computed
+    } MPDTLS_SENDER_STATS;
+
+    typedef struct MPDTLS_RECEIVER_STATS {
+    	uint64_t    	nbr_packets_received; //number of stored packets inside packets_sent
+    	uint       		min_seq;              //should be uint48 but wolfSSL is not considering 2 first bytes
+    	uint 			max_seq;              //maximum sequence number received so far
+        uint64_t        nbr_packets_received_cache; //same information as before but transmitted
+        uint            min_seq_cache;
+        uint            max_seq_cache;
+    	uint64_t		backward_delay;       //average backward delay (us)
+        int             threshold;            //after how many packets must we send a feedback ?
+        uint            last_feedback;        //sequence number of the last feedback we sent
+    } MPDTLS_RECEIVER_STATS;
+
+    typedef struct MPDTLS_FLOW_HEARTBEAT {
+        struct timeval          last_heartbeat;         //last timestamp
+        byte                    response_rcvd;          //whether or not we have received a response to our heartbeat
+        uint                    rtx_threshold;          //the retransmission threshold, will be higher is no response
+        byte*                   heartbeatPayload;       //heartbeat payload
+        word16                  heartbeatPayloadLength; //length
+        MessageState            heartbeatState;         //state to avoid multiple heartbeat rtx
+    } MPDTLS_FLOW_HEARTBEAT;
+
+    typedef struct MPDTLS_FLOW {
+    	struct sockaddr_storage host;               //a flow is determined by the host
+    	struct sockaddr_storage remote;             //and remote sockaddr (ip + port)
+    	int 					sock;               //reference the connected socket if it exists
+        uint                    wantConnectSeq;     //sequence number of the last wantConnect packet sent
+        uint                    tokens;             //number of tokens given by the scheduler to this flow
+        MPDTLS_FLOW_HEARTBEAT   hb;                 //hb manager
+    	MPDTLS_SENDER_STATS 	s_stats;            //stats updated when we send packets
+    	MPDTLS_RECEIVER_STATS 	r_stats;            //stats updated when we receive packets
+    } MPDTLS_FLOW;
+
+    typedef struct MPDTLS_FLOWS {
+        int 			nbrFlows; /* Number of available flow */
+        int 			cur_flow_idx; /* Flow selected for current packet sending (managed by scheduler)*/
+        uint            token_counter;  /* number of tokens already given to the current flow */
+    	MPDTLS_FLOW*    flows; //the collection of flow
+    } MPDTLS_FLOWS;
+
+    void MpdtlsFlowsInit(WOLFSSL*, MPDTLS_FLOWS**);
+    void MpdtlsFlowsFree(WOLFSSL*, MPDTLS_FLOWS**);
+
+    int mpdtlsAddNewFlow(WOLFSSL *, MPDTLS_FLOWS*, const struct sockaddr*, int, const struct sockaddr*, int, int, MPDTLS_FLOW **);
+    void mpdtlsRemoveFlow(WOLFSSL*, MPDTLS_FLOWS*, const struct sockaddr_storage*, const struct sockaddr_storage*, int*);
+    void mpdtlsRemoveFlowByIndex(WOLFSSL*, MPDTLS_FLOWS*, int, int*);
+    MPDTLS_FLOW* getFlowFromSocket(MPDTLS_FLOWS*, int);
+    void updateReceiverStats(WOLFSSL*);
+    void updateSenderStats(WOLFSSL*, int);
+    void checkTimeouts(WOLFSSL*, int);
+    void checkForWaitingFlow(WOLFSSL*);
+ 
+    int sockAddrEqualAddr(const struct sockaddr *, const struct sockaddr *);
+    int sockAddrEqualPort(const struct sockaddr *, const struct sockaddr *);
+    int mpdtlsIsFlowPresent(MPDTLS_FLOWS*, const struct sockaddr*, const struct sockaddr*);
+    int mpdtlsIsAddrPresent(MPDTLS_ADDRS*, const struct sockaddr*);
+    int mpdtlsGetNewSock(WOLFSSL*, const struct sockaddr*, const struct sockaddr*, int*);
+    void applySchedulingPolicy(WOLFSSL*, MPDTLS_FLOWS*);
+
+#endif /* WOLFSSL_MPDTLS */
+
 
 /* keys and secrets */
 typedef struct Keys {
@@ -1356,7 +1478,9 @@ typedef enum {
     TRUNCATED_HMAC         = 0x0004,
     ELLIPTIC_CURVES        = 0x000a,
     SESSION_TICKET         = 0x0023,
-    SECURE_RENEGOTIATION   = 0xff01
+    HEARTBEAT              = 0x000f,
+    SECURE_RENEGOTIATION   = 0xff01,
+    MULTIPATH_DTLS         = 0x002a
 } TLSX_Type;
 
 typedef struct TLSX {
@@ -1388,7 +1512,8 @@ WOLFSSL_LOCAL int    TLSX_Parse(WOLFSSL* ssl, byte* input, word16 length,
    || defined(HAVE_TRUNCATED_HMAC)       \
    || defined(HAVE_SUPPORTED_CURVES)     \
    || defined(HAVE_SECURE_RENEGOTIATION) \
-   || defined(HAVE_SESSION_TICKET)
+   || defined(HAVE_SESSION_TICKET)       \
+   || defined(WOLFSSL_MPDTLS)
 
 #error Using TLS extensions requires HAVE_TLS_EXTENSIONS to be defined.
 
@@ -1477,6 +1602,32 @@ WOLFSSL_LOCAL int TLSX_UseSecureRenegotiation(TLSX** extensions);
 
 #endif /* HAVE_SECURE_RENEGOTIATION */
 
+#ifdef HAVE_HEARTBEAT
+
+typedef enum HeartbeatMode {
+    PEER_ALLOWED_TO_SEND        = 0x01,
+    PEER_NOT_ALLOWED_TO_SEND    = 0x02
+} HeartbeatMode;
+
+typedef enum HeartbeatMessageType {
+    HEARTBEAT_REQUEST   = 0x01,
+    HEARTBEAT_RESPONSE  = 0x02,
+    HEARTBEAT_TIMESTAMP = 0x03
+} HeartbeatMessageType;
+
+typedef struct HeartbeatExtension {
+    byte mode;
+} HeartbeatExtension;
+
+typedef struct HeartbeatMessageHeader {
+    byte        type;
+    byte        payload_length[2];
+} HeartbeatMessageHeader;
+
+WOLFSSL_LOCAL int TLSX_UseHeartbeat(TLSX** extensions, HeartbeatMode mode);
+
+#endif /* HAVE_HEARTBEAT */
+
 #ifdef HAVE_SESSION_TICKET
 
 typedef struct SessionTicket {
@@ -1491,6 +1642,10 @@ WOLFSSL_LOCAL SessionTicket* TLSX_SessionTicket_Create(word32 lifetime,
                                                        byte* data, word16 size);
 WOLFSSL_LOCAL void TLSX_SessionTicket_Free(SessionTicket* ticket);
 #endif /* HAVE_SESSION_TICKET */
+
+#ifdef WOLFSSL_MPDTLS
+WOLFSSL_LOCAL int TLSX_UseMultiPathDTLS(TLSX** extensions, byte enabled);
+#endif
 
 /* wolfSSL context type */
 struct WOLFSSL_CTX {
@@ -1532,6 +1687,10 @@ struct WOLFSSL_CTX {
     CallbackIOSend CBIOSend;
 #ifdef WOLFSSL_DTLS
     CallbackGenCookie CBIOCookie;       /* gen cookie callback */
+#endif
+#ifdef WOLFSSL_MPDTLS
+    CallbackSchedule  CBIOSchedule;       /* Scheduler callback */
+    MPDTLS_ADDRS*     mpdtls_host;        /* available addresses in host (nbr interfaces) */
 #endif
     VerifyCallback  verifyCallback;     /* cert verification callback */
     word32          timeout;            /* session timeout */
@@ -1892,6 +2051,7 @@ typedef struct Options {
     word16            tls:1;              /* using TLS ? */
     word16            tls1_1:1;           /* using TLSv1.1+ ? */
     word16            dtls:1;             /* using datagrams ? */
+    word16            mpdtls:1;           /* using multipath-dtls ? */
     word16            connReset:1;        /* has the peer reset */
     word16            isClosed:1;         /* if we consider conn closed */
     word16            closeNotify:1;      /* we've recieved a close notify */
@@ -1914,6 +2074,7 @@ typedef struct Options {
     word16            usingNonblock:1;    /* are we using nonblocking socket */
     word16            saveArrays:1;       /* save array Memory for user get keys
                                            or psk */
+    word16            metadatapackets:1;
 #ifdef HAVE_POLY1305
     word16            oldPoly:1;        /* set when to use old rfc way of poly*/
 #endif
@@ -2174,6 +2335,7 @@ struct WOLFSSL {
     CipherSpecs     specs;
     Keys            keys;
     Options         options;
+    wolfSSL_Mutex   access_mutex;
 #ifdef OPENSSL_EXTRA
     WOLFSSL_BIO*     biord;              /* socket bio read  to free/close */
     WOLFSSL_BIO*     biowr;              /* socket bio write to free/close */
@@ -2211,6 +2373,18 @@ struct WOLFSSL {
     void*           IOCB_CookieCtx;     /* gen cookie ctx */
     word32          dtls_expected_rx;
 #endif
+#ifdef WOLFSSL_MPDTLS
+    MPDTLS_ADDRS*       mpdtls_remote;      /* available addresses for remote host  */
+    MPDTLS_ADDRS*       mpdtls_host;        /* available addresses in host (nbr interfaces) */
+    MPDTLS_SOCKS*       mpdtls_pool;        /* unconnected sockets, free for use */
+    MPDTLS_FLOWS*       mpdtls_flows;       /* available flows */
+    MPDTLS_FLOWS*       mpdtls_flows_waiting; /* waiting flows (not yet connected) */
+    MPDTLS_FLOW*        mpdtls_pref_flow;   /* Force socket selection */
+    struct timeval      mpdtls_last_cim;    /* Timestamp of last CIM */
+    MPDTLS_SCHED_POLICY mpdtls_sched_policy; /* The policy to be used for scheduling */
+    int                 SchedulerFlow;
+    uint                mpdtls_sched_tokens; /* total number of tokens to be split among the flows */
+#endif
 #ifdef WOLFSSL_CALLBACKS
     HandShakeInfo   handShakeInfo;      /* info saved during handshake */
     TimeoutInfo     timeoutInfo;        /* info saved during handshake */
@@ -2244,6 +2418,12 @@ struct WOLFSSL {
     #ifdef HAVE_SECURE_RENEGOTIATION
         SecureRenegotiation* secure_renegotiation; /* valid pointer indicates */
     #endif                                         /* user turned on */
+    #ifdef HAVE_HEARTBEAT
+        HeartbeatMode       peerMode;
+        MessageState        heartbeatState;
+        byte*               heartbeatPayload;
+        word16              heartbeatPayloadLength;
+    #endif
     #if !defined(NO_WOLFSSL_CLIENT) && defined(HAVE_SESSION_TICKET)
         CallbackSessionTicket session_ticket_cb;
         void*                 session_ticket_ctx;
@@ -2340,7 +2520,13 @@ enum ContentType {
     change_cipher_spec = 20, 
     alert              = 21, 
     handshake          = 22, 
-    application_data   = 23 
+    application_data   = 23,
+    heartbeat          = 24,
+    change_interface   = 42,         /* MPDTLS addition */
+    feedback           = 43,         /* MPDTLS addition */
+    feedback_ack       = 44,         /* MPDTLS addition */
+    want_connect       = 45,         /* MPDTLS addition */
+    want_connect_ack   = 46          /* MPDTLS addition */
 };
 
 
@@ -2381,6 +2567,44 @@ enum HandShakeType {
                                      conflicts with handshake finished */
 };
 
+#ifdef WOLFSSL_MPDTLS
+    /* MPDTLS change interface header */
+    typedef struct MPDtlsChangeInterfaceHeader {
+        byte                        reply;
+        byte                        nbrAddrs;
+    } MPDtlsChangeInterfaceHeader;
+
+    /* MPDTLS change interface address */
+    typedef struct MPDtlsAddress {
+        byte                   address[16]; //ipv6 or ipv4 embedded inside ipv6
+        uint16_t               portNumber;
+    } MPDtlsAddress;
+
+    #define FEEDBACK_SZ 28
+    #define HEARTBEAT_TIMESTAMP_SZ 16
+
+    typedef struct MPDtlsFeedback {
+        uint64_t            nbr_packets_received;
+        byte                min_seq[6];
+        byte                max_seq[6];
+        uint64_t            forward_delay;           
+    } MPDtlsFeedback;
+
+    typedef struct MPDtlsFeedbackAck {
+        byte                seq[6];
+    } MPDtlsFeedbackAck;
+
+    typedef struct MPDtlsWantConnect {
+        MPDtlsAddress       address_src;
+        MPDtlsAddress       address_dst;
+        byte                opts;
+    } MPDtlsWantConnect;
+
+    typedef struct MPDtlsWantConnectAck {
+        byte                ack_sequence[6];
+        byte                opts;
+    } MPDtlsWantConnectAck;
+#endif /* WOLFSSL_MPDTLS */
 
 static const byte client[SIZEOF_SENDER] = { 0x43, 0x4C, 0x4E, 0x54 };
 static const byte server[SIZEOF_SENDER] = { 0x53, 0x52, 0x56, 0x52 };
@@ -2391,9 +2615,13 @@ static const byte tls_server[FINISHED_LABEL_SZ + 1] = "server finished";
 
 /* internal functions */
 WOLFSSL_LOCAL int SendChangeCipher(WOLFSSL*);
+#ifdef HAVE_HEARTBEAT
+    WOLFSSL_LOCAL int SendHeartbeatMessage(WOLFSSL*, HeartbeatMessageType, word16, const byte*);
+#endif
 WOLFSSL_LOCAL int SendTicket(WOLFSSL*);
 WOLFSSL_LOCAL int DoClientTicket(WOLFSSL*, const byte*, word32);
 WOLFSSL_LOCAL int SendData(WOLFSSL*, const void*, int);
+WOLFSSL_LOCAL int SendPacket(WOLFSSL*, const void*, int, int);
 WOLFSSL_LOCAL int SendCertificate(WOLFSSL*);
 WOLFSSL_LOCAL int SendCertificateRequest(WOLFSSL*);
 WOLFSSL_LOCAL int SendServerKeyExchange(WOLFSSL*);
@@ -2467,6 +2695,26 @@ WOLFSSL_LOCAL  int GrowInputBuffer(WOLFSSL* ssl, int size, int usedLength);
                                                 byte, word32, word32, void*);
     WOLFSSL_LOCAL DtlsMsg* DtlsMsgInsert(DtlsMsg*, DtlsMsg*);
 #endif /* WOLFSSL_DTLS */
+
+#ifdef WOLFSSL_MPDTLS
+    WOLFSSL_LOCAL int SendChangeInterface(WOLFSSL*, const MPDTLS_ADDRS*, int);
+    WOLFSSL_LOCAL int SendFeedback(WOLFSSL*, MPDTLS_FLOW*);
+    WOLFSSL_LOCAL int SendFeedbackAck(WOLFSSL *ssl, uint seq);
+    WOLFSSL_LOCAL int SendWantConnect(WOLFSSL*, byte, struct sockaddr_storage*, struct sockaddr_storage*, MPDTLS_FLOW*);
+    WOLFSSL_LOCAL int SendWantConnectAck(WOLFSSL*, uint, byte);
+    WOLFSSL_LOCAL int InsertSock(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int DeleteSock(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int DeleteSockbyIndex(MPDTLS_SOCKS*, int);
+    WOLFSSL_LOCAL int InsertAddr(MPDTLS_ADDRS*, struct sockaddr*, SOCKET_T);
+    WOLFSSL_LOCAL int DeleteAddr(MPDTLS_ADDRS*, struct sockaddr*, SOCKET_T);
+    WOLFSSL_LOCAL int DeleteAddrbyIndex(MPDTLS_ADDRS*, int);
+	WOLFSSL_LOCAL int GetFreePortNumber(MPDTLS_SOCKS* socks, int, const struct sockaddr*, SOCKET_T);
+    WOLFSSL_LOCAL void FromSockToMPDTLSAddr(MPDtlsAddress*, struct sockaddr*);
+	WOLFSSL_LOCAL void FromMPDTLSToSockAddr(struct sockaddr_storage*, SOCKET_T*, MPDtlsAddress*);
+    WOLFSSL_LOCAL int FromSockToPrint(struct sockaddr*, int, char*, int);
+    WOLFSSL_LOCAL int mpdtlsRemoveInterface(WOLFSSL*, MPDTLS_FLOWS*, MPDTLS_FLOW*);
+    WOLFSSL_LOCAL void mpdtlsSyncFlow(WOLFSSL*, MPDTLS_FLOWS*);
+#endif /* WOLFSSL_MPDTLS */
 
 #ifndef NO_TLS
     

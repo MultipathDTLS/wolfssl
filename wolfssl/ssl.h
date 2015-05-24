@@ -38,6 +38,18 @@
     #endif
 #endif
 
+#ifdef WOLFSSL_MPDTLS
+	#ifndef _WIN32
+		#include <netinet/in.h>
+		#include <arpa/inet.h>
+		#include <netdb.h>
+		#include <unistd.h>
+		#include <sys/time.h>
+	#else
+		#include <WS2tcpip.h>
+	#endif
+#endif
+
 #ifdef WOLFSSL_PREFIX
     #include "prefix_ssl.h"
 #endif
@@ -69,6 +81,8 @@ typedef struct WOLFSSL_X509_CHAIN WOLFSSL_X509_CHAIN;
 
 typedef struct WOLFSSL_CERT_MANAGER WOLFSSL_CERT_MANAGER;
 typedef struct WOLFSSL_SOCKADDR     WOLFSSL_SOCKADDR;
+
+typedef struct METADATA_PACKET      WOLFSSL_METADATA;
 
 /* redeclare guard */
 #define WOLFSSL_TYPES_DEFINED
@@ -331,6 +345,17 @@ WOLFSSL_API int  wolfSSL_dtls(WOLFSSL* ssl);
 WOLFSSL_API int  wolfSSL_dtls_set_peer(WOLFSSL*, void*, unsigned int);
 WOLFSSL_API int  wolfSSL_dtls_get_peer(WOLFSSL*, void*, unsigned int*);
 
+/*  MPDTLS functions    */
+WOLFSSL_API int  wolfSSL_mpdtls(WOLFSSL*);
+WOLFSSL_API void wolfSSL_MetaData_ON(WOLFSSL*);
+WOLFSSL_API void wolfSSL_MetaData_OFF(WOLFSSL*);
+WOLFSSL_API int  wolfSSL_mpdtls_ask_connect(WOLFSSL*, char**, size_t*);
+WOLFSSL_API int  wolfSSL_mpdtls_connect_addr(WOLFSSL*, int, int);
+WOLFSSL_API int  wolfSSL_mpdtls_new_addr(WOLFSSL* ssl, const char*);
+WOLFSSL_API int  wolfSSL_mpdtls_new_addr_CTX(WOLFSSL_CTX* ctx, const char*);
+WOLFSSL_API int  wolfSSL_mpdtls_del_addr(WOLFSSL* ssl, const char *);
+WOLFSSL_API void wolfSSL_mpdtls_stats(WOLFSSL*);
+
 WOLFSSL_API int   wolfSSL_ERR_GET_REASON(int err);
 WOLFSSL_API char* wolfSSL_ERR_error_string(unsigned long,char*);
 WOLFSSL_API void  wolfSSL_ERR_error_string_n(unsigned long e, char* buf,
@@ -391,7 +416,7 @@ WOLFSSL_API int  wolfSSL_BIO_pending(WOLFSSL_BIO*);
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_buffer(void);
 WOLFSSL_API long wolfSSL_BIO_set_write_buffer_size(WOLFSSL_BIO*, long size);
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_ssl(void);
-WOLFSSL_API WOLFSSL_BIO*        wolfSSL_BIO_new_socket(int sfd, int flag);
+WOLFSSL_API WOLFSSL_BIO*        wolfSSL_BIO_new_socket(int sfd, int flag, void*);
 WOLFSSL_API int         wolfSSL_BIO_eof(WOLFSSL_BIO*);
 
 WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_s_mem(void);
@@ -399,6 +424,7 @@ WOLFSSL_API WOLFSSL_BIO_METHOD* wolfSSL_BIO_f_base64(void);
 WOLFSSL_API void wolfSSL_BIO_set_flags(WOLFSSL_BIO*, int);
 
 WOLFSSL_API int wolfSSL_BIO_get_mem_data(WOLFSSL_BIO* bio,const unsigned char** p);
+WOLFSSL_API void* wolfSSL_BIO_get_rbio_ptr(WOLFSSL* ssl);
 WOLFSSL_API WOLFSSL_BIO* wolfSSL_BIO_new_mem_buf(void* buf, int len);
 
 
@@ -1013,6 +1039,16 @@ WOLFSSL_API void wolfSSL_SetIOWriteFlags(WOLFSSL* ssl, int flags);
     #endif /* WOLFSSL_DTLS */
 #endif /* WOLFSSL_USER_IO */
 
+#ifdef WOLFSSL_MPDTLS
+    WOLFSSL_API int EmbedScheduler(WOLFSSL*, void*);
+    WOLFSSL_API int EmbedSchedulerRandom(WOLFSSL*, void*);
+    typedef enum {
+        ROUND_ROBIN,
+        OPTIMIZE_LATENCY,
+        OPTIMIZE_LOSS
+    } MPDTLS_SCHED_POLICY;
+    WOLFSSL_API int wolfSSL_mpdtls_modify_scheduler_policy(WOLFSSL*, MPDTLS_SCHED_POLICY, unsigned int);
+#endif
 
 #ifdef HAVE_NETX
     WOLFSSL_API void wolfSSL_SetIO_NetX(WOLFSSL* ssl, NX_TCP_SOCKET* nxsocket,
@@ -1025,6 +1061,10 @@ WOLFSSL_API void  wolfSSL_CTX_SetGenCookie(WOLFSSL_CTX*, CallbackGenCookie);
 WOLFSSL_API void  wolfSSL_SetCookieCtx(WOLFSSL* ssl, void *ctx);
 WOLFSSL_API void* wolfSSL_GetCookieCtx(WOLFSSL* ssl);
 
+
+typedef int (*CallbackSchedule)(WOLFSSL* ssl, void *flows);
+
+WOLFSSL_API void wolfSSL_CTX_SetScheduler(WOLFSSL_CTX*, CallbackSchedule);
 
 /* I/O Callback default errors */
 enum IOerrors {
@@ -1399,6 +1439,23 @@ WOLFSSL_API int wolfSSL_CTX_set_TicketHint(WOLFSSL_CTX* ctx, int);
 #endif /* NO_WOLFSSL_SERVER */
 
 #endif /* HAVE_SESSION_TICKET */
+
+#ifdef HAVE_HEARTBEAT
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseHeartbeat(WOLFSSL*, unsigned char);
+
+#endif
+#endif
+
+/* MultiPath DTLS */
+#ifdef WOLFSSL_MPDTLS
+#ifndef NO_WOLFSSL_CLIENT
+
+WOLFSSL_API int wolfSSL_UseMultiPathDTLS(WOLFSSL*, unsigned char);
+
+#endif
+#endif
 
 #define WOLFSSL_CRL_MONITOR   0x01   /* monitor this dir flag */
 #define WOLFSSL_CRL_START_MON 0x02   /* start monitoring flag */

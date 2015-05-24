@@ -128,18 +128,20 @@ enum wolfSSL_ErrorCodes {
     DUPLICATE_MSG_E         = -395,        /* Duplicate message error */
     SNI_UNSUPPORTED         = -396,        /* SSL 3.0 does not support SNI */
     SOCKET_PEER_CLOSED_E    = -397,        /* Underlying transport closed */
-
     BAD_TICKET_KEY_CB_SZ    = -398,        /* Bad session ticket key cb size */
     BAD_TICKET_MSG_SZ       = -399,        /* Bad session ticket msg size    */
     BAD_TICKET_ENCRYPT      = -400,        /* Bad user ticket encrypt        */
 
     DH_KEY_SIZE_E           = -401,        /* DH Key too small */
 
+    UNKNOWN_MPDTLS_VAL_E    = -450,        /* MPDTLS extension value Error */
+    UNKNOWN_HEARTBEAT_MODE_E= -451,        /* Heartbeat mode Error */
     /* add strings to SetErrorString !!!!! */
 
     /* begin negotiation parameter errors */
     UNSUPPORTED_SUITE       = -500,        /* unsupported cipher suite */
-    MATCH_SUITE_ERROR       = -501         /* can't match cipher suite */
+    MATCH_SUITE_ERROR       = -501,        /* can't match cipher suite */
+    HEARTBEAT_ALREADY_FLYING= -502         /* Heartbeat already sent but not received back yet */
     /* end negotiation parameter errors only 10 for now */
     /* add strings to SetErrorString !!!!! */
 
