@@ -1,6 +1,7 @@
 /* ssl.h
  *
  * Copyright (C) 2006-2015 wolfSSL Inc.
+ * Copyright (C) 2015 Quentin Devos & Loic Fortemps
  *
  * This file is part of wolfSSL. (formerly known as CyaSSL)
  *
