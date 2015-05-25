@@ -1,5 +1,9 @@
 # Notes - Please read
 
+## Multipath DTLS addition
+
+We have added to wolfSSL an important extension to DTLS called Multipath DTLS. It allows to use multiple interfaces concurrently and therefore bring mobility, resiliency and performances to DTLS. This protocol is not officially standardized but whas developped during our Master Thesis. 
+
 ## Note 1
 ```
 wolfSSL now needs all examples and tests to be run from the wolfSSL home
