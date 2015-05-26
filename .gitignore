@@ -35,7 +35,7 @@ tags
 .tags*
 cyassl-config
 wolfssl-config
-cyassl.sublime*
+*.sublime*
 fips.c
 fips_test.c
 fips

@@ -2977,12 +2977,12 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
               c16toa(0xffff,changeAddr->address+10);
               c32toa(htonl(((struct sockaddr_in *) current_addr)->sin_addr.s_addr), changeAddr->address+12);
 
-            changeAddr->portNumber = htons(((struct sockaddr_in *) current_addr)->sin_port);
+            changeAddr->portNumber = ((struct sockaddr_in *) current_addr)->sin_port;
         } else {
             XMEMCPY(changeAddr->address,
                     ((struct sockaddr_in6 *) current_addr)->sin6_addr.s6_addr,
                     sizeof(struct in6_addr));
-            changeAddr->portNumber = htons(((struct sockaddr_in6 *) current_addr)->sin6_port);
+            changeAddr->portNumber = ((struct sockaddr_in6 *) current_addr)->sin6_port;
         }
     }
 
@@ -3002,7 +3002,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         if(!isIPv6) {
             struct sockaddr_in *addr = (struct sockaddr_in *) res;
             addr->sin_family = AF_INET;
-            addr->sin_port = ntohs(changeAddr->portNumber);
+            addr->sin_port = changeAddr->portNumber;
             uint32_t addrTemp;
             ato32((changeAddr->address+12), &addrTemp);
             addr->sin_addr.s_addr = htonl(addrTemp);
@@ -3010,7 +3010,7 @@ DtlsMsg* DtlsMsgInsert(DtlsMsg* head, DtlsMsg* item)
         } else {
             struct sockaddr_in6 *addr = (struct sockaddr_in6 *) res;
             addr->sin6_family = AF_INET6;
-            addr->sin6_port = ntohs(changeAddr->portNumber);
+            addr->sin6_port = changeAddr->portNumber;
             XMEMCPY(addr->sin6_addr.s6_addr, changeAddr->address, sizeof(struct in6_addr)); 
             *sz = sizeof(struct sockaddr_in6);
         }
